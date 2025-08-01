@@ -1,8 +1,0 @@
-xyz coordinates: double
-normals: double
-angles: single
-amplitudes: double
-k0: double
-basisvectors: single
-fresnel: single
-fields: single or double

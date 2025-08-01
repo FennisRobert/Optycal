@@ -11,3 +11,7 @@ wheels/
 
 test_scripts/
 dist/
+
+*_test.py
+
+_precision_definitions.txt
