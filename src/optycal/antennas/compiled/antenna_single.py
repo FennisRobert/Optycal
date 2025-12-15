@@ -73,7 +73,7 @@ def expose_xyz_single(gx, gy, gz, ant_gxyz, Amats, thetagrid, phigrid, Gbasis, a
     
     lkx, lky, lkz = _xyz_basis_8(Gbasis, kx, ky, kz) #double
 
-    thetac = np.arctan2(lkz, np.sqrt(lkx**2 + lky**2)).astype(np.float32)
+    thetac = np.arccos(lkz).astype(np.float32)#, np.sqrt(lkx**2 + lky**2)).astype(np.float32)
     phic = np.arctan2(lky, lkx).astype(np.float32) #single
     
 
@@ -108,15 +108,15 @@ def expose_thetaphi_single(gtheta, gphi, ant_gxyz, Amats, thetagrid, phigrid, Gb
     E = np.zeros((3, gtheta.shape[0]), dtype=np.complex64)
     H = np.zeros((3, gtheta.shape[0]), dtype=np.complex64)
 
-    uxg = np.cos(gtheta)*np.cos(gphi)
-    uyg = np.cos(gtheta)*np.sin(gphi)
-    uzg = np.sin(gtheta)
+    uxg = np.sin(gtheta)*np.cos(gphi)
+    uyg = np.sin(gtheta)*np.sin(gphi)
+    uzg = np.cos(gtheta)
 
     uxl = uxg*Binv[0,0] + uyg*Binv[0,1] + uzg*Binv[0,2]
     uyl = uxg*Binv[1,0] + uyg*Binv[1,1] + uzg*Binv[1,2]
     uzl = uxg*Binv[2,0] + uyg*Binv[2,1] + uzg*Binv[2,2]
     
-    theta_local = np.arctan2(uzl, np.sqrt(uxl**2 + uyl**2))
+    theta_local = np.arccos(uzl)#, np.sqrt(uxl**2 + uyl**2))
     phi_local = np.arctan2(uyl, uxl)
     
     x0, y0, z0 = [0,0,0]

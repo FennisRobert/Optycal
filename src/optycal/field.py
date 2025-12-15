@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 
 import numpy as np
-
+from typing import Literal
 
 class Field:
     
@@ -76,9 +76,9 @@ class Field:
     
     @property
     def Etheta(self):
-        thz = np.cos(self.theta)
-        thx = -np.sin(self.theta)*np.cos(self.phi)
-        thy = -np.sin(self.theta)*np.sin(self.phi)
+        thz = np.sin(self.theta)
+        thx = -np.cos(self.theta)*np.cos(self.phi)
+        thy = -np.cos(self.theta)*np.sin(self.phi)
         return self.E[0,:]*thx + self.E[1,:]*thy + self.E[2,:]*thz
 
     @property
@@ -156,3 +156,5 @@ class Field:
             nf.__dict__[p] = self.__dict__[p].reshape(shape)
         
         return nf
+
+    

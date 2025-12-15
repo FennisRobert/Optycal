@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
+from typing import Literal
+
 class PVDisplaySettings:
 
     def __init__(self):
@@ -32,8 +34,12 @@ class PVDisplaySettings:
         self.show_zgrid: bool = True
         self.grid_line_width: float = 1.0
         self.add_light: bool = False
-        self.light_angle: float = (20, -20)
+        self.light_angle: tuple[float, float] = (20., -20.)
         self.cast_shadows: bool = True
         self.background_bottom: str = "#c0d2e8"
         self.background_top: str = "#ffffff"
         self.grid_line_color: str = "#8e8e8e"
+        self.z_boost: float = 0.0
+        self.depth_peeling: bool = True
+        self.anti_aliassing: Literal["msaa","ssaa",'fxaa'] = "msaa"
+        self.metal_roughness: float = 0.3

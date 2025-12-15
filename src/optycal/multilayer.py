@@ -151,7 +151,7 @@ class MultiLayer(SurfaceRT):
         return self.materials[0].color
     
     @property
-    def opacity(self) -> str:
+    def opacity(self) -> float:
         return sum([mat.opacity for mat in self.materials])/len(self.materials)
     
     def rt_data(self) -> np.ndarray:
@@ -258,6 +258,18 @@ class PEC(SurfaceRT):
         self.Tte = np.zeros((nangles,))
         self.color: str = "#aaaaaa"
         self.opacity = 1.0
+        
+    def rt_data(self) -> np.ndarray:
+        Npts = len(self.angles)
+        data = np.zeros((7, Npts), dtype=np.complex64)
+        data[0, :] = self.angles.astype(np.complex64)
+        data[1, :] = self.Rte1
+        data[2, :] = self.Rtm1
+        data[3, :] = self.Rte2
+        data[4, :] = self.Rtm2
+        data[5, :] = self.Tte
+        data[6, :] = self.Ttm
+        return data
 
 class AIR(SurfaceRT):
     def __init__(self, nangles: int = 1000):
@@ -270,6 +282,18 @@ class AIR(SurfaceRT):
         self.Tte = np.ones((nangles,))
         self.color: str = "#56b9ff"
         self.opacity: float = 0.1
+        
+    def rt_data(self) -> np.ndarray:
+        Npts = len(self.angles)
+        data = np.zeros((7, Npts), dtype=np.complex64)
+        data[0, :] = self.angles.astype(np.complex64)
+        data[1, :] = self.Rte1
+        data[2, :] = self.Rtm1
+        data[3, :] = self.Rte2
+        data[4, :] = self.Rtm2
+        data[5, :] = self.Tte
+        data[6, :] = self.Ttm
+        return data
 
 
 FRES_AIR = AIR()

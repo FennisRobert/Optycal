@@ -26,7 +26,7 @@ from numba.types import Tuple as TypeTuple
 import numpy as np
 from scipy.spatial import ConvexHull, Delaunay
 
-from ..cs import CoordinateSystem, CoordinateArray, VectorArray, XScalarArray, YScalarArray, ZScalarArray, CoordinateTuple, ToGlobalTransformer
+from ..cs import CoordinateSystem, CoordinateArray, VectorArray, XScalarArray, YScalarArray, ZScalarArray, CoordinateTuple, ToGlobalTransformer, GCS
 from ...util.check import mustbe
 from ...util.printing import summarize
 from ..space import Point, Polygon
@@ -55,6 +55,22 @@ def remove_unmeshed_vertices(vertices: np.ndarray, triangulation: list) -> tuple
     
     return vertices[:,unique_id], tri_out
 
+@njit(cache=True, nogil=True)
+def matmul(M: np.ndarray, vecs: np.ndarray):
+    """Executes a basis transformation of vectors (3,N) with a basis matrix M
+
+    Args:
+        M (np.ndarray): A (3,3) basis matrix
+        vec (np.ndarray): A (3,N) set of coordinates
+
+    Returns:
+        np.ndarray: The transformed (3,N) set of vectors
+    """
+    out = np.empty((3,vecs.shape[1]), dtype=vecs.dtype)
+    out[0,:] = M[0,0]*vecs[0,:] + M[0,1]*vecs[1,:] + M[0,2]*vecs[2,:]
+    out[1,:] = M[1,0]*vecs[0,:] + M[1,1]*vecs[1,:] + M[1,2]*vecs[2,:]
+    out[2,:] = M[2,0]*vecs[0,:] + M[2,1]*vecs[1,:] + M[2,2]*vecs[2,:]
+    return out
     
 @njit(TypeTuple((float32[:, :], float32[:], float32[:,:], int32[:]))(float32[:,:], int32[:,:]), cache=True)
 def _c_gen_normals_areas_centroids(vertices, tris):
@@ -114,7 +130,7 @@ class Mesh:
     def __init__(
         self,
         vertices: np.ndarray,
-        cs: CoordinateSystem,
+        cs: CoordinateSystem = GCS,
         alignment_function: Callable = None,
     ):
         mustbe(vertices, np.ndarray)
@@ -273,24 +289,26 @@ class Mesh:
         self.vertices = (center + ((vn.T/np.linalg.norm(vn, axis=1) * radius)).T).astype(np.float32).T
 
     def set_triangles(self, triangles: np.ndarray,
-                      auto_update: bool = True) -> None:
+                      auto_update: bool = True) -> Mesh:
+
         logger.debug("Setting triangles.")
         if isinstance(triangles, np.ndarray):
             if triangles.shape[1] == 3:
                 triangles = triangles.transpose()
             self.triangles = triangles.astype(np.int32)
-            return
-        
-        mustbe(triangles, list)
-        mustbe(triangles[0], tuple)
-        mustbe(triangles[0][0], int)
-        N = self.nvertices
-        logger.debug("Checking triangle validity.")
-        [I1, I2, I3] = tuple(zip(*triangles))
-        self.triangles = _fix_dimensions(np.array([I1, I2, I3], dtype=np.int32))
+        else:
+            mustbe(triangles, list)
+            mustbe(triangles[0], tuple)
+            mustbe(triangles[0][0], int)
+            N = self.nvertices
+            logger.debug("Checking triangle validity.")
+            [I1, I2, I3] = tuple(zip(*triangles))
+            self.triangles = _fix_dimensions(np.array([I1, I2, I3], dtype=np.int32))
         logger.debug("Triangles set")
         if auto_update:
             self.update()
+        return self
+
 
     def __getitem__(self, index: int) -> np.ndarray:
         return self.vertices[index, :]
@@ -410,7 +428,7 @@ class Mesh:
             normals[:, i2] += self.normals[:, it]
             normals[:, i3] += self.normals[:, it]
         normals = normals / counter
-        self.edge_normals = self.cs.global_basis @ normals
+        self.edge_normals = matmul(self.cs.global_basis, normals)
         
         # Vertex Normals
         logger.debug('Computing vertex normals')
@@ -421,7 +439,7 @@ class Mesh:
                 logger.warning(f'Empty vertex to triangle binding for vertex {iv} -> {ts}' )
                 continue
             normals[:, iv] = np.mean(self.normals[:, ts], axis=1)
-        self.vertex_normals = self.cs.global_basis @ normals
+        self.vertex_normals = matmul(self.cs.global_basis, normals)
         logger.debug(f'Vertex normal data: {summarize(self.vertex_normals)}')
         logger.debug("Update complete")
 

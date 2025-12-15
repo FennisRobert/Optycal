@@ -25,6 +25,7 @@ Eomni = np.float64(np.sqrt(3 * Z0 / (4 * np.pi)))
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     csp = np.cos(phi)
     snp = np.sin(phi)
@@ -42,6 +43,7 @@ def dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarra
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def dipole_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
     csp = np.cos(phi)
@@ -67,6 +69,7 @@ def generate_gaussian_pattern(atangle, attenuation, k0):
     
     b = (attenuation - 20*np.log10(1+np.cos(atangle)))/(k0*np.cos(atangle)*20*np.log10(np.e))
     def ffp(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         csp = np.cos(phi)
         snp = np.sin(phi)
@@ -85,6 +88,7 @@ def generate_gaussian_pattern(atangle, attenuation, k0):
 
     #@njit(TypeTuple((c16[:], c16[:], c16[:], c16[:], c16[:], c16[:]))(f8[:], f8[:], f8[:], f8), cache=True, fastmath=True, parallel=True, nogil=True)
     def nfp(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         snt = np.sin(theta)
         csp = np.cos(phi)
@@ -113,6 +117,7 @@ def generate_gaussian_pattern_z(atangle, attenuation, k0):
     
     b = (20*np.log10((1+np.cos(atangle))/2)-attenuation)/(20*k0*(1-np.cos(atangle))*np.log10(np.e))
     def ffp(theta: np.ndarray, phi: np.ndarray, k0: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         rz = np.sin(theta)
         ry = np.cos(theta)*np.sin(phi)+1e-20*np.random.rand(*theta.shape)
         rx = np.cos(theta)*np.cos(phi)+1e-20*np.random.rand(*theta.shape)
@@ -129,6 +134,7 @@ def generate_gaussian_pattern_z(atangle, attenuation, k0):
 
     #@njit(TypeTuple((c16[:], c16[:], c16[:], c16[:], c16[:], c16[:]))(f8[:], f8[:], f8[:], f8), cache=True, fastmath=True, parallel=True, nogil=True)
     def nfp(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         rz = np.sin(theta)
         ry = np.cos(theta)*np.sin(phi)+1e-20*np.random.rand(*theta.shape)
         rx = np.cos(theta)*np.cos(phi)+1e-20*np.random.rand(*theta.shape)
@@ -147,6 +153,7 @@ def generate_gaussian_pattern_z(atangle, attenuation, k0):
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def half_dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     csp = np.cos(phi)
     snp = np.sin(phi)
@@ -167,6 +174,7 @@ def half_dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.n
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def half_dipole_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
     csp = np.cos(phi)
@@ -229,7 +237,8 @@ def dipole_pattern_ff_kxyz(kx, ky, kz, k0) -> tuple[np.ndarray, np.ndarray, np.n
 
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
-def patch_pattern(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def patch_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
     csp = np.cos(phi)
@@ -255,6 +264,7 @@ def patch_pattern(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def patch_pattern_ff(theta, phi, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
     csp = np.cos(phi)
@@ -285,6 +295,7 @@ def generate_triang_pattern(Gain_peak, Gain_level, angle_level, curve_radius_ang
 
     @njit(cache=True, fastmath=True, parallel=True, nogil=True)
     def _triang_pattern(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         snt = np.sin(theta)
         csp = np.cos(phi)
@@ -314,6 +325,7 @@ def generate_triang_pattern(Gain_peak, Gain_level, angle_level, curve_radius_ang
 
     @njit(cache=True, fastmath=True, parallel=True, nogil=True)
     def _triang_pattern_ff(theta, phi, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         snt = np.sin(theta)
         csp = np.cos(phi)
@@ -346,6 +358,7 @@ def generate_patch_pattern(Width, Length, k0):
     kL = k0*Length
     @njit(cache=True, fastmath=True, parallel=True, nogil=True)
     def _patch_pattern(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         snt = np.sin(theta)
         csp = np.cos(phi)
@@ -371,6 +384,7 @@ def generate_patch_pattern(Width, Length, k0):
 
     @njit(cache=True, fastmath=True, parallel=True, nogil=True)
     def _patch_pattern_ff(theta, phi, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        theta = np.pi/2 - theta
         cst = np.cos(theta)
         snt = np.sin(theta)
         csp = np.cos(phi)

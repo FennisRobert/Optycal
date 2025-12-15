@@ -74,9 +74,9 @@ def stratton_chu_ff(Ein, Hin, vis, wns, tpout, k0, pgb):
     thout = tpout[0, :]
     phout = tpout[1, :]
 
-    rx = np.cos(thout) * np.cos(phout)
-    ry = np.cos(thout) * np.sin(phout)
-    rz = np.sin(thout)
+    rx = np.sin(thout) * np.cos(phout)
+    ry = np.sin(thout) * np.sin(phout)
+    rz = np.cos(thout)
 
     kx = k0 * rx
     ky = k0 * ry
@@ -91,10 +91,7 @@ def stratton_chu_ff(Ein, Hin, vis, wns, tpout, k0, pgb):
     Eouty = np.zeros((N,)).astype(np.complex128)
     Eoutz = np.zeros((N,)).astype(np.complex128)
 
-    w0 = np.float64(k0 * 299792458)
-    u0 = np.float64(4 * np.pi * 1e-7)
     Z0 = np.float64(376.73031366857)
-    eps0 = np.float64(8.854187812813e-12)
 
     Q = np.complex128(-1j * k0 / (4 * np.pi))
     ii = np.complex128(1j)
@@ -128,6 +125,7 @@ def stratton_chu_ff(Ein, Hin, vis, wns, tpout, k0, pgb):
 
         # ii += iadd
         pgb.update(1)
+        
     Eout[0, :] = Eoutx
     Eout[1, :] = Eouty
     Eout[2, :] = Eoutz

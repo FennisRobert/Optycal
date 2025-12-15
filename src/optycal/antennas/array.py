@@ -51,8 +51,8 @@ class AntennaArray:
         self.cs: CoordinateSystem = cs
         self.antennas: list[Antenna] = []
         self.power_compensation: float = 1
-        self.scan_theta: float = 0
-        self.scan_phi: float = 0
+        self.scan_theta: float | None = None
+        self.scan_phi: float | None = None
         self.power: float = power
         self.k0: float = 2*np.pi*frequency/299792458
         self.arraygrids = None
@@ -68,7 +68,7 @@ class AntennaArray:
     def add_antenna(self, antenna: Antenna) -> None:
         self.antennas.append(antenna)
 
-    def set_scan_direction(self, theta, phi, degree: bool = False, auto_update: bool = True) -> None:
+    def set_scan_direction(self, theta, phi, degree: bool = True, auto_update: bool = True) -> None:
         if degree:
             theta = theta * np.pi / 180
             phi = phi * np.pi / 180
@@ -282,18 +282,25 @@ class AntennaArray:
         
 
     def _update_antennas(self):
-        kx = self.k0 * np.cos(self.scan_theta) * np.cos(self.scan_phi)
-        ky = self.k0 * np.cos(self.scan_theta) * np.sin(self.scan_phi)
-        kz = self.k0 * np.sin(self.scan_theta)
-        k = np.array([kx, ky, kz])
-
+        
         for ant in self.antennas:
             ant.frequency = self.k0*299792458/(2*np.pi)
 
+        skip_phase = self.skip_phase_steering
+        
+        if self.scan_phi is not None and self.scan_theta is not None:
+            kx = self.k0 * np.sin(self.scan_theta) * np.cos(self.scan_phi)
+            ky = self.k0 * np.sin(self.scan_theta) * np.sin(self.scan_phi)
+            kz = self.k0 * np.cos(self.scan_theta)
+            k = np.array([kx, ky, kz])
+        else:
+            skip_phase = True
+        
+        
         for ant in self.antennas:
             gxyz = ant.phase_gxyz
             ant.array_compensation = 1/np.sqrt(self.nantennas)
-            if not self.skip_phase_steering:
+            if not skip_phase:
                 ant.scan_coefficient = np.exp(-1j * (k @ gxyz))
             else:
                 ant.scan_coefficient = 1.0

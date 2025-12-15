@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
+from __future__ import annotations
 from enum import Enum
 from typing import Tuple, Union
 
@@ -22,7 +23,8 @@ import numpy as np
 from .solvers import stratton_chu_xyz_surface, stratton_chu_ff, stratton_chu_xyz
 from .samplespace import FarFieldSpace
 from .geo import Mesh, CoordinateSystem
-from .multilayer import SurfaceRT
+from .geo.cs import GCS
+from .multilayer import SurfaceRT, FRES_AIR
 from .field import Field
 from .settings import GLOBAL_SETTINGS
 from numba_progress import ProgressBar
@@ -124,6 +126,10 @@ class Surface:
     
     @property
     def xyz(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return self.mesh.g.xyz
+    
+    @property
+    def gxyz(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         return self.mesh.g.xyz
 
     def write_field(self, side: int, field: Field, k0: float):
@@ -364,6 +370,23 @@ class Surface:
 
         return nfpat, ffpat
 
+    @staticmethod
+    def import_model(
+        vertices: np.ndarray,
+        triangles: np.ndarray,
+        E: np.ndarray,
+        H: np.ndarray,
+        origin: np.ndarray,
+        k0: float,
+        cs: CoordinateSystem = GCS) -> Surface:
+        
+        mesh = Mesh(vertices, cs)
+        mesh.align_from_origin(origin[0], origin[1], origin[2])
+        mesh.set_triangles(triangles)
+        surface = Surface(mesh, FRES_AIR, 2, "ImportedSurface")
+        surface.write_field(2, Field(E=E, H=H), k0)
+        return surface
+
 class OrientableSurface(Surface):
     surfacetype: SurfaceType = SurfaceType
 
@@ -553,6 +576,7 @@ def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side
     wns = np.zeros_like(vis).astype(np.float64)
     tri_normals = source.normals()
     tri_ids = source.trianglewise_indices()
+    
     for i in range(mesh.ntriangles):
         n = tri_normals[:,i]
         i1, i2, i3 = tri_ids[:,i]

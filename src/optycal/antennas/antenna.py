@@ -130,7 +130,7 @@ class Antenna:
     def restore_cs(self):
         self._deformed_cs = None
 
-    def deform(self, T: callable) -> None:
+    def deform(self, T: Callable) -> None:
         gxyz = np.array(self.gxyz)
         xh = self.cs.gxhat
         yh = self.cs.gyhat
@@ -176,7 +176,7 @@ class Antenna:
         kz = dz/R
         
         lkx, lky, lkz = self.cs.from_global_basis(kx, ky, kz)
-        thetac = np.arctan2(lkz, np.sqrt(lkx**2 + lky**2))
+        thetac = np.arccos(lkz)
         phic = np.arctan2(lky, lkx)
         
         B = self.amplitude * np.exp(-1j * self.k0 * R) / R
@@ -206,16 +206,16 @@ class Antenna:
         csp = np.cos(phi_local)
         snt = np.sin(theta_local)
         snp = np.sin(phi_local)
-        kxh = cst * csp
-        kyh = cst * snp
-        kzh = snt
+        kxh = snt * csp
+        kyh = snt * snp
+        kzh = cst
         
-        theta_local = np.arctan2(kzh, np.sqrt(kxh**2 + kyh**2))
+        theta_local = np.arccos(kzh)
         phi_local = np.arctan2(kyh, kxh)
         x0, y0, z0 = [0,0,0]
         kx, ky, kz = self.k0*kxh, self.k0*kyh, self.k0*kzh
         gx, gy, gz = self.local_xyz
-        B = self.amplitude * np.exp(1j * (kx * (gx-x0) + ky * (gy-y0) + kz * (gz-z0)))
+        B = self.amplitude * np.exp(1j * (kx * gx + ky * gy + kz * gz))
         [ex, ey, ez, hx, hy, hz] = self.ff_pattern(theta_local, phi_local, self.k0)
         E1 = np.array(self.cs.in_global_basis(ex, ey, ez))
         H1 = np.array(self.cs.in_global_basis(hx, hy, hz))
@@ -231,7 +231,7 @@ class Antenna:
         """
         kxl, kyl, kzl = self.cs.from_global_basis(kx, ky, kz)
         kx, ky, kz = self.k0*kxl, self.k0*kyl, self.k0*kzl
-        B = self.amplitude * np.exp(-1j * (kx * self.x + ky * self.y + kz * self.z))
+        B = self.amplitude * np.exp(1j * (kx * self.x + ky * self.y + kz * self.z))
         [ex, ey, ez, hx, hy, hz] = self.ff_pattern(kxl, kyl, kzl, self.k0)
         
         E1 = np.array(self.cs.in_global_basis(ex, ey, ez))
@@ -389,6 +389,65 @@ class InterpolatingAntenna(Antenna):
         th = np.linspace(-np.pi/2, np.pi/2, 51)
         ph = np.linspace(-np.pi, np.pi, 101)
         self.interp_pattern: AntennaPattern = AntennaPattern.from_function(self.ff_pattern,th, ph, self.k0)
+
+    
+    def expose_thetaphi(self, gtheta, gphi) -> Field:
+        gtheta = gtheta.astype(np.float32)
+        gphi = gphi.astype(np.float32)
+        gxyz = np.array(self.gxyz).astype(np.float64)
+        E, H = expose_thetaphi_single(gtheta, 
+                                      gphi, 
+                                      gxyz, 
+                                      self.interp_pattern.full_matrix(Precision.SINGLE),
+                                      self.interp_pattern.theta_grid, 
+                                      self.interp_pattern.phi_grid,
+                                      self.cs.global_basis,
+                                      self.camp,
+                                      self.k0)
+        return Field(E=E, H=H, theta=gtheta, phi=gphi)
+    
+    def expose_xyz(self, gx, gy, gz) -> Field:
+        gxyz = np.array(self.gxyz)
+        E, H = expose_xyz_single(gx,
+                                 gy, 
+                                 gz,  
+                                 gxyz, 
+                                 self.interp_pattern.full_matrix(Precision.SINGLE),
+                                 self.interp_pattern.theta_grid, 
+                                 self.interp_pattern.phi_grid,
+                                 self.cs.global_basis,
+                                 self.camp,
+                                 self.k0)
+        return Field(E=E, H=H, x=gx, y=gy, z=gz)
+    
+    def expose_surface(self, surface: Surface, add_field = True) -> tuple[Field, Field]:
+        gxyz = np.array(self.gxyz)
+        E1, H1, E2, H2 = expose_surface_single(surface.gxyz, 
+                                               surface.field_normals(),
+                                               surface.fresnel.rt_data,
+                                               gxyz, 
+                                               self.interp_pattern.full_matrix(Precision.SINGLE),
+                                               self.interp_pattern.theta_grid,
+                                               self.interp_pattern.phi_grid,
+                                               self.cs.global_basis,
+                                               self.camp,
+                                               self.k0)
+        surface.add_field(1, Field(E=E1, H=H1), self.k0)
+        surface.add_field(2, Field(E=E2, H=H2), self.k0)
+        return Field(E=E1, H=H1), Field(E=E2, H=H2)
+    
+class EMergeAntenna(Antenna):
+    
+    def __init__(self, x: float, y: float, z: float, emdata: dict, 
+                 cs: CoordinateSystem | None = GCS, name: str = 'Antenna', angle_step: float = 5.0):
+        frequency = emdata['freq']
+        th = np.linspace(0, np.pi, int(np.ceil(180/angle_step)))
+        ph = np.linspace(-np.pi, np.pi, int(np.ceil(360/angle_step)))
+        self.interp_pattern: AntennaPattern = AntennaPattern.from_function(emdata['ff_function'], th, ph, 2*np.pi*frequency/299792458)
+        nf_pattern = self.interp_pattern.nf_pattern
+        ff_pattern = self.interp_pattern.ff_pattern
+        
+        super().__init__(x, y, z, frequency, cs, nf_pattern, ff_pattern, name)
 
     
     def expose_thetaphi(self, gtheta, gphi) -> Field:

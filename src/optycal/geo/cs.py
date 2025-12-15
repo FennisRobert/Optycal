@@ -24,7 +24,7 @@ from loguru import logger
 
 @njit(cache=True, nogil=True)
 def matmul(a: np.ndarray, b: np.ndarray):
-    out = np.empty((3,b.shape[1]), dtype=b.dtype)
+    out = np.zeros((3,b.shape[1]), dtype=b.dtype)
     out[0,:] = a[0,0]*b[0,:] + a[0,1]*b[1,:] + a[0,2]*b[2,:]
     out[1,:] = a[1,0]*b[0,:] + a[1,1]*b[1,:] + a[1,2]*b[2,:]
     out[2,:] = a[2,0]*b[0,:] + a[2,1]*b[1,:] + a[2,2]*b[2,:]
@@ -32,15 +32,15 @@ def matmul(a: np.ndarray, b: np.ndarray):
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def _tp_from_global(invbasis, th, ph):
-    cst = np.cos(th)
-    xx = np.cos(ph) * cst
-    yy = np.sin(ph) * cst
-    zz = np.sin(th)
+    snt = np.sin(th)
+    xx = np.cos(ph) * snt
+    yy = np.sin(ph) * snt
+    zz = np.cos(th)
     x2 = xx*invbasis[0,0] + yy*invbasis[0,1] + zz*invbasis[0,2]
     y2 = xx*invbasis[1,0] + yy*invbasis[1,1] + zz*invbasis[1,2]
     z2 = xx*invbasis[2,0] + yy*invbasis[2,1] + zz*invbasis[2,2]
     phi2 = np.arctan2(y2, x2)
-    theta2 = np.arctan2(z2, np.sqrt(x2**2 + y2**2))
+    theta2 = np.arccos(z2)
     return theta2, phi2
 
 class NamedDescriptor(ABC):
@@ -163,8 +163,8 @@ class CoordinateSystem:
         self.children.append(object)
 
     def rotate_basis(
-        self, axis: np.ndarray, angle: float, degrees: bool = False
-    ) -> None:
+        self, axis: np.ndarray, angle: float, degrees: bool = True
+    ) -> CoordinateSystem:
         """Rotates the coordinate system around an axis.
 
         Args:
@@ -172,6 +172,8 @@ class CoordinateSystem:
             angle (float): The angle
             degrees (bool, optional): If the angle is in degrees. Defaults to False.
         """
+        if self.is_global:
+            raise RuntimeError('Cannot modify global coordinate systems')
         axis = np.array(axis)
         if degrees:
             angle_rad = angle*np.pi/180
@@ -193,7 +195,8 @@ class CoordinateSystem:
         self.yhat = R @ self.yhat
         self.zhat = R @ self.zhat
         self._calculate_properties()
-
+        return self
+        
     def translate(self, dx: float, dy: float, dz: float) -> None:
         """Translates the coordinate system
 
@@ -226,12 +229,12 @@ class CoordinateSystem:
     def ae_in_global_cs(self, theta: np.ndarray, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if self.is_global:
             return theta, phi
-        xx = np.cos(phi) * np.cos(theta)
-        yy = np.sin(phi) * np.cos(theta)
-        zz = np.sin(theta)
+        xx = np.cos(phi) * np.sin(theta)
+        yy = np.sin(phi) * np.sin(theta)
+        zz = np.cos(theta)
         x2, y2, z2 = self.in_global_basis(xx, yy, zz)
         phi2 = np.arctan2(y2, x2)
-        theta2 = np.arctan2(z2, np.sqrt(x2**2 + y2**2))
+        theta2 = np.arccos(z2)
         return theta2, phi2
 
     def ae_from_global_cs(self, theta, phi) -> tuple[np.ndarray, np.ndarray]:
@@ -253,7 +256,7 @@ class CoordinateSystem:
         z2 = self.global_basis_inv[2,0] * xl + self.global_basis_inv[2,1] * yl + self.global_basis_inv[2,2] * zl
         return x2, y2, z2
 
-    def displace(self, dx, dy, dz):
+    def displace(self, dx: float = 0, dy: float = 0, dz: float = 0) -> CoordinateSystem:
         return CoordinateSystem(
             origin= np.array([dx, dy, dz]),
             x=np.array([1,0,0]),
@@ -262,6 +265,15 @@ class CoordinateSystem:
             parent=self,
         )
 
+    def copy(self) -> CoordinateSystem:
+        return CoordinateSystem(
+            origin= np.array([0,0,0]),
+            x=np.array([1,0,0]),
+            y=np.array([0,1,0]),
+            z=np.array([0,0,1]),
+            parent=self,
+        )
+    
     def get_global(self) -> CoordinateSystem:
         """Returns the global cordinate system"""
         cs = self
@@ -287,14 +299,14 @@ class CoordinateSystem:
 
 
 def sph_to_cart(R: np.ndarray, Theta: np.ndarray, Phi: np.ndarray) -> Tuple[np.ndarray]:
-    X = R*np.cos(Phi)*np.cos(Theta)
-    Y = R*np.sin(Phi)*np.cos(Theta)
-    Z = R*np.sin(Theta)
+    X = R*np.cos(Phi)*np.sin(Theta)
+    Y = R*np.sin(Phi)*np.sin(Theta)
+    Z = R*np.cos(Theta)
     return X,Y,Z
 
 def cart_to_sph(X: np.ndarray, Y: np.ndarray, Z: np.ndarray) -> Tuple[np.ndarray]:
     R = np.sqrt(X**2+Y**2+Z**2)
-    theta = np.arctan2(Z, np.sqrt(X**2+Y**2))
+    theta = np.arccos(Z)
     phi = np.arctan2(Y,X)
     return R, theta, phi
 
