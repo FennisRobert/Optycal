@@ -70,6 +70,7 @@ def generate_sphere(
     radius: float,
     ds: float,
     cs: CoordinateSystem = GCS,
+    thrange: tuple = (-np.pi/2, np.pi/2)
 ) -> Mesh:
     """Generates a spherical surface mesh
 
@@ -85,6 +86,14 @@ def generate_sphere(
     def f(x):
         return int(4 * np.round((x + 1e-8) / 4))
     
+    from .parametric import SweepFunction, ParametricLine
+    
+    # Generate an semi-circular perimiter in the XZ plane
+    line = ParametricLine(fx=lambda t: radius * np.cos(t), fz=lambda t: radius * np.sin(t), trange=thrange)
+    sweep = SweepFunction.revolve((0,0,1))
+    mesh = sweep.mesh(line, ds, cs, alignment_origin=center)
+    return mesh
+    
     center = np.array(center)
 
     Ntheta = f(np.ceil(np.pi * radius / ds))
@@ -93,11 +102,14 @@ def generate_sphere(
     Ntri = int(Asphere / Atri)
     Nvert = 1.5 * Ntri / 2
     vertices = []
-    ths = np.linspace(-np.pi / 2, np.pi / 2, Ntheta)
+    ths = np.linspace(*thrange, Ntheta)
     vbot = center + np.array([0, 0, -radius])
     vtop = center + np.array([0, 0, radius])
-    vertices.append(vbot)
-    vertices.append(vtop)
+    
+    if thrange[0] <= -np.pi/2 + 1e-5:
+        vertices.append(vbot)
+    if thrange[1] >= np.pi/2 - 1e-5:
+        vertices.append(vtop)
     logger.debug("Generating sphere vertices.")
     for i, th in enumerate(ths):
         circ = 2 * np.pi * radius * np.cos(th)

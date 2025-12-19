@@ -286,6 +286,8 @@ def plot_ff(
         E_list = list(E)
     n_series = len(E_list)
 
+    if dB is True and ylim is None:
+        ylim = (-60, None)
     # Style broadcasting
     def _broadcast(param, default):
         if isinstance(param, list):

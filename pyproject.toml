@@ -28,7 +28,9 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "emerge>=1.3.4",
     "pytest>=8.4.1",
+    "scikit-umfpack>=0.4.2",
 ]
 
 [tool.uv]

@@ -76,26 +76,52 @@ class Antenna:
     
     @property
     def k0(self) -> float:
+        """The antennas propagation constant
+
+        Returns:
+            float: The propagation constant
+        """
         return 2 * np.pi * self.frequency / 299792458
     
     @property
     def amplitude(self) -> float:
+        """ The antenna excitation amplitude"""
         return self.taper_coefficient * self.scan_coefficient * self.correction_coefficient * self.array_compensation * self.active * reduce(lambda x,y: x*y, self.aux_coefficients)
 
     @property
     def camp(self) -> np.complex64:
-        return np.complex64(self.amplitude.real)
+        """The complex amplitude in c64 format
+
+        Returns:
+            np.complex64: _description_
+        """
+        return np.complex64(self.amplitude)
     
     @property
     def local_xyz(self) -> tuple:
+        """The position in local XYZ coordinates
+
+        Returns:
+            tuple: _description_
+        """
         return self.x, self.y, self.z
     
     @property
     def gxyz(self) -> tuple[float, float, float]:
+        """The Global XYZ position
+
+        Returns:
+            tuple[float, float, float]: _description_
+        """
         return self.cs.in_global_cs(self.x, self.y, self.z)
     
     @property
     def phase_gxyz(self) -> tuple[float, float, float]:
+        """The XYZ coordinates for computing the required antenna phase
+
+        Returns:
+            tuple[float, float, float]: _description_
+        """
         if self._phase_cs is not None:
             return self._phase_cs.in_global_cs(self.x,self.y,self.z)
         return self._physical_cs.in_global_cs(self.x, self.y, self.z)
@@ -106,14 +132,18 @@ class Antenna:
     
     @property
     def gx(self) -> float:
+        """The global X-coordinate
+        """
         return self.gxyz[0]
 
     @property
     def gy(self) -> float:
+        """ The global Y-coordinate"""
         return self.gxyz[1]
 
     @property
     def gz(self) -> float:
+        """ The global Z-coordinate"""
         return self.gxyz[2]
 
     def __repr__(self) -> str:
@@ -127,10 +157,16 @@ class Antenna:
         else:
             raise TypeError('Target must be either a Surface or a SampleSpace')
     
-    def restore_cs(self):
+    def reset_deformation(self):
         self._deformed_cs = None
 
     def deform(self, T: Callable) -> None:
+        """Deforms the antenna by placing it physically in a different spot.
+        The transofrmation T(x,y,z) -> (x,y,z) determins the displacement
+        
+        Args:
+            T (Callable): The displacement function
+        """
         gxyz = np.array(self.gxyz)
         xh = self.cs.gxhat
         yh = self.cs.gyhat
@@ -243,7 +279,15 @@ class Antenna:
         return Field(E=E, H=H)
     
     def expose_surface(self, surface: Surface, add_field: bool = True) -> Field:
-        
+        """Expose a surface object with EM energy
+
+        Args:
+            surface (Surface): The surface to expose
+            add_field (bool, optional): If the field should be added instead of overwritten. Defaults to True.
+
+        Returns:
+            Field: _description_
+        """
         refang = surface.fresnel.angles
         
         E1 = np.zeros(surface.fieldshape, dtype=np.complex64)
@@ -351,14 +395,29 @@ class Antenna:
         return fr1, fr2
     
     def expose_ff(self, target: FarFieldSpace) -> Field:
+        """Expose a FarFieldSpace object
+
+        Args:
+            target (FarFieldSpace): _description_
+
+        Returns:
+            Field: The resultant Field
+        """
         fr = self.expose_thetaphi(target.theta, target.phi)
         target.field = fr
         return fr
     
     def reset_aux(self):
+        """Resets any auxilliary scan coefficients.
+        """
         self.aux_coefficients = [1,]
 
-    def normalize_power(self, power: float):
+    def normalize_power(self, power: float = 1.0):
+        """Normalizes the total radiated power to the desired amount
+
+        Args:
+            power (float): The power to radiate
+        """
         from ..geo.mesh.generators import generate_sphere
         
         _lambda = 2 * np.pi / self.k0
@@ -375,6 +434,11 @@ class Antenna:
         logger.debug(f"Compensation factor: {self.correction_coefficient}")
     
     def accelerate(self) -> InterpolatingAntenna:
+        """Return an antenna that uses an interpolation function instead of the antenna function (midly faster)
+
+        Returns:
+            InterpolatingAntenna: _description_
+        """
         return InterpolatingAntenna(
             self.x, self.y, self.z, 
             self.frequency, 

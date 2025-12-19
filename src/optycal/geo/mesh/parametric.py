@@ -22,6 +22,7 @@ from typing import Callable, overload
 from loguru import logger
 from ..mesh import Mesh
 from ..cs import CoordinateSystem, GCS
+
 def orthonormalize(axis: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Generates a set of orthonormal vectors given an input vector X
 

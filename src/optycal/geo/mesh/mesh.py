@@ -41,12 +41,30 @@ MESHDIR = Path("Meshes")
 MESHDIR.mkdir(parents=True, exist_ok=True)
 
 def _fix_dimensions(arr: np.ndarray):
+    """Fixes the dimensions of the input array.
+
+    The array is expected to have shape (3, N). If the input array has shape (N, 3),
+    Args:
+        arr (np.ndarray): The input array to fix.
+
+    Returns:
+        np.ndarray: The fixed array with shape (3, N).
+    """
     if arr.shape[0] == 3:
         return arr
     if arr.shape[1] == 3:
         return arr.transpose()
 
 def remove_unmeshed_vertices(vertices: np.ndarray, triangulation: list) -> tuple[np.ndarray, list]:
+    """Removes vertices that are not part of any triangle.
+
+    Args:
+        vertices (np.ndarray): The array of vertex coordinates.
+        triangulation (list): The list of triangles, each defined by a triplet of vertex indices.
+
+    Returns:
+        tuple[np.ndarray, list]: A tuple containing the updated vertex array and the updated triangulation.
+    """
     unique_id = np.sort(np.unique(np.array(triangulation).flatten()))
     replace_id = np.arange(unique_id.shape[0])
     mapping = {idx: i for idx, i in zip(unique_id, replace_id)}
@@ -74,6 +92,15 @@ def matmul(M: np.ndarray, vecs: np.ndarray):
     
 @njit(TypeTuple((float32[:, :], float32[:], float32[:,:], int32[:]))(float32[:,:], int32[:,:]), cache=True)
 def _c_gen_normals_areas_centroids(vertices, tris):
+    """Generates normals, areas, and centroids for a set of triangles.
+
+    Args:
+        vertices (np.ndarray): The array of vertex coordinates.
+        tris (np.ndarray): The array of triangle vertex indices.
+
+    Returns:
+        Tuple[np.ndarray]: The normals, areas, centroids, and bad triangles.
+    """
     normals = np.zeros(tris.shape, dtype=np.float32)
     areas = np.zeros((tris.shape[1],), dtype=np.float32)
     centroids = np.zeros_like(normals, dtype=np.float32)
@@ -101,7 +128,14 @@ def _c_gen_normals_areas_centroids(vertices, tris):
     return normals, areas, centroids, bad_triangles
 
 def edge_iter(lst: list):
-    # lst = sorted(lst)
+    """Yields pairs of adjacent elements from the list.
+
+    Args:
+        lst (list): The input list.
+
+    Yields:
+        tuple: A tuple containing a pair of adjacent elements.
+    """
     lst = list(lst)
     for i1, elem1 in enumerate(lst[:-1]):
         elem2 = lst[i1 + 1]
@@ -110,6 +144,15 @@ def edge_iter(lst: list):
 
 
 def pick_opposite(lst: list, item):
+    """Picks the opposite vertex in a pair.
+
+    Args:
+        lst (list): The input list of vertex indices.
+        item (int): The index of the vertex to find the opposite for.
+
+    Returns:
+        int: The index of the opposite vertex.
+    """
     i1, i2 = lst
     if i1 == item:
         return i2
@@ -180,7 +223,7 @@ class Mesh:
                 pass
         return picklable_attributes
     
-    def _save(self, filename):
+    def _save(self, filename: str):
         filepath = MESHDIR / (filename + ".pkl")
         logger.debug(f"Saving file as: {filepath}")
         atributes = self._get_picklable_attributes()
@@ -231,13 +274,28 @@ class Mesh:
     def g(self) -> Mesh:
         return ToGlobalTransformer(self)
     
-    def merge(self, other):
+    def merge(self, other: Mesh) -> None:
+        """Merges another mesh into this mesh.
+
+        Args:
+            other (Mesh): The mesh to merge.
+        """
         logger.debug(f'Merging {self} with {other}')
         N = self.vertices.shape[1]
         self.vertices = np.hstack((self.vertices, other.vertices))
         self.triangles = np.hstack((self.triangles, other.triangles+N))
     
     def constrain_centroids(self, constrain_f: Callable) -> Mesh:
+        """Constrain the centroids of the mesh based on a given function.
+
+        Only triangles with centroids that satisfy the constraint function are retained.
+        
+        Args:
+            constrain_f (Callable): A function that takes x, y, z coordinates and returns a boolean mask.
+
+        Returns:
+            Mesh: A new mesh with constrained centroids.
+        """
         ids = np.squeeze(np.argwhere(constrain_f(self.centroids[0,:], self.centroids[1,:], self.centroids[2,:])==True))
         triangles = self.triangles[:,ids]
         vids = np.sort(np.unique(np.array(self.triangles)))
@@ -246,7 +304,17 @@ class Mesh:
         new_mesh._update_mesh()
         return new_mesh
 
-    def displace(self, dx, dy, dz) -> Mesh:
+    def displace(self, dx: float, dy: float, dz: float) -> Mesh:
+        """Displaces the mesh by a given offset.
+
+        Args:
+            dx (float): The displacement in the x-direction.
+            dy (float): The displacement in the y-direction.
+            dz (float): The displacement in the z-direction.
+
+        Returns:
+            Mesh: A new mesh with the displaced vertices.
+        """
         newMesh = Mesh(np.zeros((3,1)), None, None)
         for key, value in self.__dict__.items():
             newMesh.__dict__[key] = value
@@ -255,19 +323,44 @@ class Mesh:
         newMesh.vertices[2,:] = newMesh.vertices[2,:] + dz
         return newMesh
 
-    def align_from_origin(self, x0, y0, z0):
+    def align_from_origin(self, x0: float, y0: float, z0: float) -> None:
+        """Aligns the mesh normals away from a given origin.
+
+        Args:
+            x0 (float): The x-coordinate of the origin.
+            y0 (float): The y-coordinate of the origin.
+            z0 (float): The z-coordinate of the origin.
+        """
         self.alignment_function = lambda x, y, z: np.array([x - x0, y - y0, z - z0]).T
 
     def iter_triangle_ids(self):
+        """Yields the vertex indices of each triangle in the mesh.
+
+        Yields:
+            tuple: A tuple containing the vertex indices of a triangle.
+        """
         for Is in zip(self.triangles[0,:], self.triangles[1,:], self.triangles[2,:]):
             yield Is
 
     def add_vertex(self, vertex: Point) -> None:
+        """Adds a vertex to the mesh.
+
+        Args:
+            vertex (Point): The vertex to add.
+        """
         mustbe(vertex, Point)
         logger.debug(f'Adding vertex {vertex} to {self}')
         self.vertices = np.concatenate(self.vertices, vertex.numpy)
 
-    def get_neighbors(self, index):
+    def get_neighbors(self, index: int) -> List[int]:
+        """Gets the neighboring vertices of a given vertex.
+
+        Args:
+            index (int): The index of the vertex.
+
+        Returns:
+            List[int]: A list of indices of neighboring vertices.
+        """
         ids = set()
         for t in self.v2t[index]:
             ids.update(self.triangles[:, t])
@@ -275,14 +368,21 @@ class Mesh:
         ids.remove(index)
         return ids
 
-    def add_polygon_id(self, *ids) -> None:
-        logger.debug(f'Adding polygon {ids} to {self}')
-        self.triangles = np.concatenate(self.triangles, np.array(ids))
-
     def set_boundary(self, ids: List[int]) -> None:
+        """Sets the boundary vertices of the mesh.
+
+        Args:
+            ids (List[int]): The indices of the boundary vertices.
+        """
         self.boundary_vertices = ids
         
     def project_to_sphere(self, radius: float, center: np.ndarray):
+        """Projects the mesh vertices onto a sphere.
+
+        Args:
+            radius (float): The radius of the sphere.
+            center (np.ndarray): The center of the sphere.
+        """
         logger.debug("Projecting to sphere.")
         center = np.array(center, dtype=np.float32)
         vn = self.vertices.T - center
@@ -290,7 +390,15 @@ class Mesh:
 
     def set_triangles(self, triangles: np.ndarray,
                       auto_update: bool = True) -> Mesh:
+        """Sets the triangles of the mesh.
 
+        Args:
+            triangles (np.ndarray): The triangle indices.
+            auto_update (bool, optional): Whether to update the mesh after setting triangles. Defaults to True.
+
+        Returns:
+            Mesh: The updated mesh.
+        """
         logger.debug("Setting triangles.")
         if isinstance(triangles, np.ndarray):
             if triangles.shape[1] == 3:
@@ -300,7 +408,6 @@ class Mesh:
             mustbe(triangles, list)
             mustbe(triangles[0], tuple)
             mustbe(triangles[0][0], int)
-            N = self.nvertices
             logger.debug("Checking triangle validity.")
             [I1, I2, I3] = tuple(zip(*triangles))
             self.triangles = _fix_dimensions(np.array([I1, I2, I3], dtype=np.int32))
@@ -349,12 +456,18 @@ class Mesh:
         logger.debug("Normals aligned")
 
     def update(self):
+        """Updates the mesh properties.
+        """
         self._update_mesh()
         
     def _update_mesh(self):
+        """Updates the mesh connectivity and properties.
+        """
         self._fill_complete()
     
     def _fill_complete(self):
+        """Fills in the complete mesh data structures.
+        """
         logger.debug("Updating mesh properties")
         self._remove_unmeshed_vertices()
         self.v2e = defaultdict(set)
@@ -444,6 +557,8 @@ class Mesh:
         logger.debug("Update complete")
 
     def tri_convexhull(self):
+        """Triangulates the mesh using the Convex Hull method.
+        """
         logger.debug("Calling ConvexHull.")
         tri = ConvexHull(self.vertices.T)
         logger.debug("ConvexHull finished.")
@@ -452,6 +567,8 @@ class Mesh:
         self._fill_complete()
 
     def tri_delaunay(self):
+        """Triangulates the mesh using the Delaunay method.
+        """
         logger.debug("Calling Delaunay.")
         tri = Delaunay(self.vertices.T)
         logger.debug("Delaunay finished.")
@@ -460,6 +577,8 @@ class Mesh:
         self._fill_complete()
 
     def _remove_unmeshed_vertices(self) -> None:
+        """Removes vertices that are not part of any triangle.
+        """
         meshed_vertices = list(set(list(self.triangles.flatten())))
         Nmeshed = len(meshed_vertices)
         Noriginal = self.nvertices

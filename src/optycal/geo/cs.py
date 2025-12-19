@@ -103,7 +103,7 @@ class CoordinateSystem:
         self.parent_cs: CoordinateSystem = parent
         self.is_global: bool = is_global
 
-        self.children: list = []
+        self.children: list[CoordinateSystem] = []
 
         if parent is not None:
             self.parent_cs.children.append(self)
@@ -159,8 +159,13 @@ class CoordinateSystem:
         for child in self.children:
             child._calculate_properties()
 
-    def add_child(self, object) -> None:
-        self.children.append(object)
+    def add_child(self, cs: CoordinateSystem) -> None:
+        """ Adds a child coordinate system.
+
+        Args:
+            cs (CoordinateSystem): The child coordinate system to add.
+        """
+        self.children.append(cs)
 
     def rotate_basis(
         self, axis: np.ndarray, angle: float, degrees: bool = True
@@ -209,6 +214,16 @@ class CoordinateSystem:
         self._calculate_properties()
         
     def in_global_cs(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Transforms coordinates from local to global coordinate system.
+
+        Args:
+            x (np.ndarray): The x-coordinate in local CS.
+            y (np.ndarray): The y-coordinate in local CS.
+            z (np.ndarray): The z-coordinate in local CS.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The x, y, z coordinates in global CS.
+        """
         x2 = self.global_basis[0,0] * x + self.global_basis[0,1] * y + self.global_basis[0,2] * z
         y2 = self.global_basis[1,0] * x + self.global_basis[1,1] * y + self.global_basis[1,2] * z
         z2 = self.global_basis[2,0] * x + self.global_basis[2,1] * y + self.global_basis[2,2] * z
@@ -218,6 +233,16 @@ class CoordinateSystem:
         return x2, y2, z2
 
     def from_global_cs(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Transforms coordinates from global to local coordinate system.
+
+        Args:
+            x (np.ndarray): The x-coordinate in global CS.
+            y (np.ndarray): The y-coordinate in global CS.
+            z (np.ndarray): The z-coordinate in global CS.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The x, y, z coordinates in local CS.
+        """
         xl = x - self.global_origin[0]
         yl = y - self.global_origin[1]
         zl = z - self.global_origin[2]
@@ -227,6 +252,15 @@ class CoordinateSystem:
         return x2, y2, z2
     
     def ae_in_global_cs(self, theta: np.ndarray, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Transforms azimuthal and elevation angles from local to global coordinate system.
+
+        Args:
+            theta (np.ndarray): The elevation angle in local CS.
+            phi (np.ndarray): The azimuthal angle in local CS.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The elevation and azimuthal angles in global CS.
+        """
         if self.is_global:
             return theta, phi
         xx = np.cos(phi) * np.sin(theta)
@@ -237,19 +271,48 @@ class CoordinateSystem:
         theta2 = np.arccos(z2)
         return theta2, phi2
 
-    def ae_from_global_cs(self, theta, phi) -> tuple[np.ndarray, np.ndarray]:
+    def ae_from_global_cs(self, theta: np.ndarray, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Transforms elevation and azimuthal angles from global to local coordinate system.
+
+        Args:
+            theta (np.ndarray): The elevation angle in global CS.
+            phi (np.ndarray): The azimuthal angle in global CS.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: The elevation and azimuthal angles in local CS.
+        """
         if self.is_global:
             return theta, phi
         th, ph = _tp_from_global(self.global_basis_inv, theta, phi)
         return th, ph
 
     def in_global_basis(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray]:
+        """Transforms coordinates from local to global coordinate system.
+
+        Args:
+            x (np.ndarray): The x-coordinate in local CS.
+            y (np.ndarray): The y-coordinate in local CS.
+            z (np.ndarray): The z-coordinate in local CS.
+
+        Returns:
+            Tuple[np.ndarray]: The x, y, z coordinates in global CS.
+        """
         x2 = self.global_basis[0,0] * x + self.global_basis[0,1] * y + self.global_basis[0,2] * z
         y2 = self.global_basis[1,0] * x + self.global_basis[1,1] * y + self.global_basis[1,2] * z
         z2 = self.global_basis[2,0] * x + self.global_basis[2,1] * y + self.global_basis[2,2] * z
         return x2, y2, z2
 
     def from_global_basis(self, x: np.ndarray, y: np.ndarray, z: np.ndarray) -> Tuple[np.ndarray]:
+        """Transforms coordinates from global to local coordinate system.
+
+        Args:
+            x (np.ndarray): The x-coordinate in global CS.
+            y (np.ndarray): The y-coordinate in global CS.
+            z (np.ndarray): The z-coordinate in global CS.
+
+        Returns:
+            Tuple[np.ndarray]: The x, y, z coordinates in local CS.
+        """
         xl, yl, zl = x, y, z
         x2 = self.global_basis_inv[0,0] * xl + self.global_basis_inv[0,1] * yl + self.global_basis_inv[0,2] * zl
         y2 = self.global_basis_inv[1,0] * xl + self.global_basis_inv[1,1] * yl + self.global_basis_inv[1,2] * zl
@@ -257,6 +320,16 @@ class CoordinateSystem:
         return x2, y2, z2
 
     def displace(self, dx: float = 0, dy: float = 0, dz: float = 0) -> CoordinateSystem:
+        """Displaces the coordinate system by the given amounts.
+
+        Args:
+            dx (float, optional): The displacement in the x-direction. Defaults to 0.
+            dy (float, optional): The displacement in the y-direction. Defaults to 0.
+            dz (float, optional): The displacement in the z-direction. Defaults to 0.
+
+        Returns:
+            CoordinateSystem: The displaced coordinate system.
+        """
         return CoordinateSystem(
             origin= np.array([dx, dy, dz]),
             x=np.array([1,0,0]),
@@ -266,6 +339,11 @@ class CoordinateSystem:
         )
 
     def copy(self) -> CoordinateSystem:
+        """Creates a copy of the current coordinate system.
+
+        Returns:
+            CoordinateSystem: The copied coordinate system.
+        """
         return CoordinateSystem(
             origin= np.array([0,0,0]),
             x=np.array([1,0,0]),
@@ -275,7 +353,11 @@ class CoordinateSystem:
         )
     
     def get_global(self) -> CoordinateSystem:
-        """Returns the global cordinate system"""
+        """Returns the global coordinate system.
+
+        Returns:
+            CoordinateSystem: The global coordinate system.
+        """
         cs = self
         while not cs.is_global:
             cs = cs.parent_cs
@@ -283,6 +365,16 @@ class CoordinateSystem:
     
     @staticmethod
     def from_dir_pol(direction: np.ndarray, polarization: np.ndarray, parent: CoordinateSystem) -> CoordinateSystem:
+        """Creates a coordinate system from a direction vector and a polarization vector.
+
+        Args:
+            direction (np.ndarray): The direction vector.
+            polarization (np.ndarray): The polarization vector.
+            parent (CoordinateSystem): The parent coordinate system.
+
+        Returns:
+            CoordinateSystem: _description_
+        """
         if not isinstance(direction, np.ndarray):
             direction = np.array(direction)
         if not isinstance(polarization, np.ndarray):
@@ -299,12 +391,32 @@ class CoordinateSystem:
 
 
 def sph_to_cart(R: np.ndarray, Theta: np.ndarray, Phi: np.ndarray) -> Tuple[np.ndarray]:
+    """Transforms spherical coordinates to Cartesian coordinates.
+
+    Args:
+        R (np.ndarray): The radial distance.
+        Theta (np.ndarray): The polar angle (inclination).
+        Phi (np.ndarray): The azimuthal angle (longitude).
+
+    Returns:
+        Tuple[np.ndarray]: _description_
+    """
     X = R*np.cos(Phi)*np.sin(Theta)
     Y = R*np.sin(Phi)*np.sin(Theta)
     Z = R*np.cos(Theta)
     return X,Y,Z
 
 def cart_to_sph(X: np.ndarray, Y: np.ndarray, Z: np.ndarray) -> Tuple[np.ndarray]:
+    """Transforms Cartesian coordinates to spherical coordinates.
+
+    Args:
+        X (np.ndarray): The x-coordinate.
+        Y (np.ndarray): The y-coordinate.
+        Z (np.ndarray): The z-coordinate.
+
+    Returns:
+        Tuple[np.ndarray]: The radial distance, polar angle, and azimuthal angle.
+    """
     R = np.sqrt(X**2+Y**2+Z**2)
     theta = np.arccos(Z)
     phi = np.arctan2(Y,X)

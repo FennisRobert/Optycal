@@ -14,10 +14,13 @@ from .geo.mesh import Mesh
 from .geo.mesh.generators import generate_circle, generate_rectangle, generate_sphere
 from .geo.mesh.parametric import ParametricLine, SweepFunction, Mapping
 from .surface import Surface
-from .multilayer import MultiLayer, MAT_AIR, FRES_AIR, FRES_PEC
+from .multilayer import MultiLayer, FRES_AIR, FRES_PEC
 from .viewer import OptycalDisplay
 from .plot import plot, plot_ff, plot_ff_polar
 from .geo.align import AlignOrigin, AlignX, AlignY, AlignZ
+from . import lib
+from .lib import AIR
+from .material import Material
 
 #from .tapers import chebwin, cosine, taylor, bartlett, blackman, blackmanharris, boxcar, dpss, flattop, gaussian, general_gaussian, hamming, hann, kaiser, nuttall, triang, tukey
 from . import tapers as taper

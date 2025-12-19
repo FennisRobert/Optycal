@@ -394,6 +394,16 @@ class OptycalDisplay:
     ## CUSTOM METHODS
     
     def add_mesh_object(self, mesh: Mesh, color: str = "#aaaaaa", opacity = 1.0) -> pv.UnstructuredGrid:
+        """Adds a mesh object to the plot.
+
+        Args:
+            mesh (Mesh): The mesh to add.
+            color (str, optional): The color of the mesh. Defaults to "#aaaaaa".
+            opacity (float, optional): The opacity of the mesh. Defaults to 1.0.
+
+        Returns:
+            pv.UnstructuredGrid: The added mesh object.
+        """
         ntris = mesh.triangles.shape[1]
         cells = np.zeros((ntris,4), dtype=np.int64)
         cells[:,1:] = mesh.triangles.T
@@ -404,6 +414,18 @@ class OptycalDisplay:
         self._plot.add_mesh(grid, pickable=True, color=color, opacity=opacity, show_edges=True)
     
     def add_surface_object(self, surf: Surface, field: str = None, quantity: Literal['real','imag','abs'] = 'abs', opacity: float = None) -> pv.UnstructuredGrid:
+        """Adds a surface object to the plot.
+
+        Field options: ['E', 'H', 'Ex','Sy','normE', etc.]
+        Args:
+            surf (Surface): The surface to add.
+            field (str, optional): The field to visualize. Defaults to None.
+            quantity (Literal['real','imag','abs'], optional): The quantity to visualize. Defaults to 'abs'.
+            opacity (float, optional): The opacity of the surface. Defaults to None.
+
+        Returns:
+            pv.UnstructuredGrid: The added surface object.
+        """
         mesh = surf.mesh
         ntris = mesh.triangles.shape[1]
         cells = np.zeros((ntris,4), dtype=np.int64)
@@ -443,6 +465,12 @@ class OptycalDisplay:
             self._plot.add_mesh(grid, scalars=np.real(scalars), pickable=True, cmap=cmap, clim=clim, opacity=opacity)
 
     def add_antenna_object(self, antenna: Antenna, color: Literal['none','amp','phase'] = 'amp'):
+        """Adds an antenna object to the plot.
+
+        Args:
+            antenna (Antenna): The antenna to add.
+            color (Literal['none','amp','phase'], optional): The color of the antenna. Defaults to 'amp'.
+        """
         x, y, z = antenna.gxyz
         pc = np.array([x,y,z])
         pol = antenna.cs.gzhat
@@ -457,6 +485,8 @@ class OptycalDisplay:
 
     ## OBLIGATORY METHODS
     def add(self, *objects: Surface | Mesh | Antenna | AntennaArray, **kwargs):
+        """Adds one or more objects to the plot.
+        """
         for obj in objects:
             if isinstance(obj, Surface):
                 self.add_surface_object(obj, **kwargs)
@@ -577,6 +607,14 @@ class OptycalDisplay:
                  color: str = 'black', 
                  position: Literal['lower_left', 'lower_right', 'upper_left', 'upper_right', 'lower_edge', 'upper_edge', 'right_edge', 'left_edge']='upper_right',
                  abs_position: tuple[float, float, float] = None):
+        """Adds text to the plot.
+
+        Args:
+            text (str): The text to add.
+            color (str, optional): The color of the text. Defaults to 'black'.
+            position (Literal['lower_left', 'lower_right', 'upper_left', 'upper_right', 'lower_edge', 'upper_edge', 'right_edge', 'left_edge'], optional): The position of the text. Defaults to 'upper_right'.
+            abs_position (tuple[float, float, float], optional): The absolute position of the text. Defaults to None.
+        """
         viewport = False
         if abs_position is not None:
             position = abs_position

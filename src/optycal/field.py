@@ -19,7 +19,17 @@ import numpy as np
 from typing import Literal
 
 class Field:
-    
+    """Represents a 3D electromagnetic field.
+    Attributes:
+        x (np.ndarray): The x-coordinates of the field.
+        y (np.ndarray): The y-coordinates of the field.
+        z (np.ndarray): The z-coordinates of the field.
+        theta (np.ndarray): The theta angles of the field.
+        phi (np.ndarray): The phi angles of the field.
+        E (np.ndarray): The electric field components.
+        H (np.ndarray): The magnetic field components.
+        creator (str): The creator of the field.
+    """
     def __init__(self, 
                  x: np.ndarray = None,
                  y: np.ndarray = None,
@@ -52,18 +62,38 @@ class Field:
     
     @property
     def Ex(self):
+        """Returns the x-component of the electric field.
+
+        Returns:
+            np.ndarray: The x-component of the electric field.
+        """
         return self.E[0,:]
 
     @property
     def Ey(self):
+        """Returns the y-component of the electric field.
+
+        Returns:
+            np.ndarray: The y-component of the electric field.
+        """
         return self.E[1,:]
 
     @property
     def Ez(self):
+        """Returns the z-component of the electric field.
+
+        Returns:
+            np.ndarray: The z-component of the electric field.
+        """
         return self.E[2,:]
     
     @property
     def Etheta_X(self):
+        """Returns the x-component of the electric field in spherical coordinates.
+
+        Returns:
+            np.ndarray: The x-component of the electric field in spherical coordinates.
+        """
         ux = np.cos(self.theta)*np.cos(self.phi)
         uy = np.sin(self.phi)*np.cos(self.theta)
         uz = np.sin(self.theta)
@@ -76,6 +106,11 @@ class Field:
     
     @property
     def Etheta(self):
+        """Returns the theta-component of the electric field in spherical coordinates.
+
+        Returns:
+            np.ndarray: The theta-component of the electric field in spherical coordinates.
+        """
         thz = np.sin(self.theta)
         thx = -np.cos(self.theta)*np.cos(self.phi)
         thy = -np.cos(self.theta)*np.sin(self.phi)
@@ -83,6 +118,11 @@ class Field:
 
     @property
     def Ephi(self):
+        """Returns the phi-component of the electric field in spherical coordinates.
+
+        Returns:
+            np.ndarray: The phi-component of the electric field in spherical coordinates.
+        """
         phx = -np.sin(self.phi)
         phy = np.cos(self.phi)
         phz = 0*self.phi

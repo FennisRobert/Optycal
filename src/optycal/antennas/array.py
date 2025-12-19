@@ -25,6 +25,8 @@ from rich.progress import Progress
 from loguru import logger
 from .antenna import Antenna
 from ..multilayer import FRES_AIR
+from typing import Iterable, Callable
+
 
 def taper(N: int):
     return np.ones((N,))
@@ -35,6 +37,11 @@ def compute_spacing(fmax: float, scan_max: float, degrees: bool = True) -> float
     lmax = 299792458/fmax
     return lmax/(1+np.sin(scan_max))
 
+def _cast_vector(arry: Iterable[float], shape: tuple[float,...]) -> np.ndarray:
+    arry_out = np.array(arry)
+    if arry_out.shape != shape:
+        raise ValueError(f'Provided array {arry_out} has shape {arry.shape}. A shape {shape} is expected.')
+    return arry_out
 
 class AntennaArray:
     def __init__(
@@ -66,9 +73,22 @@ class AntennaArray:
         return len(self.antennas)
     
     def add_antenna(self, antenna: Antenna) -> None:
+        """Adds an antenna to the array
+
+        Args:
+            antenna (Antenna): The antenna element to add.
+        """
         self.antennas.append(antenna)
 
-    def set_scan_direction(self, theta, phi, degree: bool = True, auto_update: bool = True) -> None:
+    def set_scan_direction(self, theta: float, phi: float, degree: bool = True, auto_update: bool = True) -> None:
+        """Compute phase settings to make all antennas scan in the desired scan direction.
+
+        Args:
+            theta (float): The theta angle
+            phi (float): The phi angle
+            degree (bool, optional): If the angles are provided in degrees. Defaults to True.
+            auto_update (bool, optional): If the antenna settings should be automatically updated. Defaults to True.
+        """
         if degree:
             theta = theta * np.pi / 180
             phi = phi * np.pi / 180
@@ -78,6 +98,8 @@ class AntennaArray:
             self._update_antennas()
 
     def reset_aux_coefficients(self) -> None:
+        """Resets all auxilliary scan coefficients.
+        """
         for a in self.antennas:
             a.reset_aux()
 
@@ -97,6 +119,19 @@ class AntennaArray:
             logger.debug('Restored xyz coordinates')
 
     def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> Field:
+        """Exposes a set of far field theta/phi coordinates
+
+        X: theta=90, phi=0
+        Y: theta=90, phi=90
+        Z: theta=0
+        
+        Args:
+            gtheta (np.ndarray): The theta coordinates
+            gphi (np.ndarray): The phi coordinates
+
+        Returns:
+            Field: The resultant EH field object
+        """
         E = np.zeros((3,len(gtheta)), dtype=np.complex64)
         H = np.zeros((3,len(gtheta)), dtype=np.complex64)
         logger.debug("Iterating over antennas")
@@ -110,7 +145,17 @@ class AntennaArray:
         logger.debug("Field Computation Complete")
         return Field(E=E, H=H, theta=gtheta, phi=gphi)
 
-    def expose_xyz(self, gx, gy, gz) -> Field:
+    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray) -> Field:
+        """Exposes a set of XYZ coordinates defined in the global space.
+
+        Args:
+            gx (np.ndarray): The global x-coordinates
+            gy (np.ndarray): The global y-coordinates
+            gz (np.ndarray): The global z-coordinates
+
+        Returns:
+            Field: The resultat Field data.
+        """
         E = np.zeros((3,len(gx)), dtype=np.complex64)
         H = np.zeros((3,len(gx)), dtype=np.complex64)
         logger.debug("Iterating over antennas")
@@ -125,7 +170,15 @@ class AntennaArray:
         return Field(E=E, H=H, x=gx, y=gy, z=gz)
 
     def expose_surface(self, surface: Surface, add_field: bool = True) -> Field:
-        
+        """Exposes a Surface
+
+        Args:
+            surface (Surface): The surface to expose
+            add_field (bool, optional): If the field shoeld be added. If false its overwritten. Defaults to True.
+
+        Returns:
+            Field: Returns the computed field.
+        """
         refang = surface.fresnel.angles
         
         E1 = np.zeros(surface.fieldshape, dtype=np.complex64)
@@ -145,7 +198,7 @@ class AntennaArray:
         tnz = tn[2,:]
 
         with Progress() as p:
-            task = p.add_task("[red]Exposing surface...", total=self.nantennas)
+            task = p.add_task("[red] Exposing surface...", total=self.nantennas)
             for i in range(self.nantennas):
                 p.update(task, advance=1)
                 fr = self.antennas[i].expose_xyz(x, y, z)
@@ -240,21 +293,49 @@ class AntennaArray:
         return fr1, fr2
     
     def expose_ff(self, target: FarFieldSpace) -> Field:
+        """Exposes a FarFieldSpace object
+
+        Args:
+            target (FarFieldSpace): The target FarFieldSpace object
+
+        Returns:
+            Field: _description_
+        """
         fr = self.expose_thetaphi(target.theta, target.phi)
         target.field = fr
         return fr
     
     def deform(self, T: callable, auto_update: bool = True):
+        """Deforms the array by displacing the antenna elements using a mapping T(x,y,z) -> (x,y,z)
+        
+        Antennas with a deformation applied with base their phase steering on their original (not deformed) position.
+
+        Args:
+            T (callable): The displacement map: ℝ3 -> ℝ3
+            auto_update (bool, optional): _description_. Defaults to True.
+        """
         for a in self.antennas:
             a.deform(T)
         if auto_update:
             self._update_antennas()
 
-    def restore_cs(self):
+    def reset_deformation(self):
+        """ Removes any deformed coordinate systems from the antennas.
+        """
         for a in self.antennas:
-            a.restore_cs()
+            a.reset_deformation()
 
-    def aux_scan(self, theta, phi, deg: bool=True, grouping: tuple = (1,1)):
+    def set_scan_direction_groups(self, theta: float, phi: float, deg: bool=True, grouping: tuple = (1,1), auto_update: bool = True):
+        """Compute phase settings to make groups of antennas scan in the desired scan direction.
+
+        The group size is defined by the grouping tuple. 
+        Args:
+            theta (float): The theta angle
+            phi (float): The phi angle
+            degree (bool, optional): If the angles are provided in degrees. Defaults to True.
+            grouping (tuple[float, float], optional): The groupings of antennas to scan.
+            auto_update (bool, optional) If the antenna settings should be automatically updated. Defaults to True.
+        """
         if len(self.arraygrids.shape)==1:
             Nx = self.arraygrids.shape[0]
             Ny = 1
@@ -267,9 +348,9 @@ class AntennaArray:
         nxg = Nx//gx
         nyg = Ny//gy
         
-        kx = self.k0 * np.cos(theta) * np.cos(phi)
-        ky = self.k0 * np.cos(theta) * np.sin(phi)
-        kz = self.k0 * np.sin(theta)
+        kx = self.k0 * np.sin(theta) * np.cos(phi)
+        ky = self.k0 * np.sin(theta) * np.sin(phi)
+        kz = self.k0 * np.cos(theta)
         k = np.array([kx, ky, kz])
 
         for ix in range(nxg):
@@ -280,9 +361,12 @@ class AntennaArray:
                 for a in antennas:
                     a.aux_coefficients.append(np.exp(-1j * (k @ gxyz)))
         
+        if auto_update:
+            self._update_antennas()
 
     def _update_antennas(self):
-        
+        """Update the antenna objects with the proper phase, taper and power normalization settings.
+        """
         for ant in self.antennas:
             ant.frequency = self.k0*299792458/(2*np.pi)
 
@@ -306,15 +390,20 @@ class AntennaArray:
                 ant.scan_coefficient = 1.0
             ant.correction_coefficient = self.power_compensation*np.sqrt(self.power)
 
-    def _normalize_power(self, value=None, resolution=0.5):
+    def _normalize_power(self, value: float | None = None, resolution: float = 0.33):
+        """Normalizes the total radiated power in the current setting by performing a surface integral of a sphere around it
 
+        Args:
+            value (float, optional): The power normalisation constant. Defaults to None.
+            resolution (float, optional): The integration surface sample resolution. Defaults to 0.33.
+        """
         from ..geo.mesh.generators import generate_sphere
 
         logger.debug('Normalizing pattern')
         self._update_antennas()
         if value is not None and isinstance(value, (float, int)):
             logger.debug('Setting to provided value.')
-            self.power_compensation=value
+            self.power_compensation = value
             self._update_antennas()
             return
         
@@ -339,7 +428,7 @@ class AntennaArray:
         _lambda = 2 * np.pi / self.k0
         Rmax = max(Rmax, 5*_lambda)
         
-        mesh = generate_sphere(p0, 1.5 * Rmax, _lambda/2, self.cs.get_global())
+        mesh = generate_sphere(p0, 1.5 * Rmax, _lambda*resolution, self.cs.get_global())
         surf = Surface(mesh, FRES_AIR)
         self.expose_surface(surf)
 
@@ -352,13 +441,22 @@ class AntennaArray:
         for a, active in zip(self.antennas, activation):
             a.active = active
         
-    def add_1d_array(self, taper, ds, axis, nf_pattern = dipole_pattern_nf, ff_pattern = dipole_pattern_ff):
+    def add_1d_array(self, taper: Iterable[float | complex], ds: tuple[float, float, float], nf_pattern: Callable = dipole_pattern_nf, ff_pattern: Callable = dipole_pattern_ff):
+        """Adds a 1D array of antennas to the antenna array object
+        
+
+        Args:
+            taper (Iterable[float | complex]): An iterable of antenna element amplitudes (comple)
+            axis (tuple[float, float, float]): The vector describing the element separation
+            nf_pattern (Callable, optional): The nearfield atenna pattern to use. Defaults to dipole_pattern_nf.
+            ff_pattern (Callable, optional): The farfield antenna pattern to use. Defaults to dipole_pattern_ff.
+        """
+        ds = _cast_vector(ds, (3,))
         N = len(taper)
-        axis = np.array(axis)
+        ds = np.array(ds)
         self.arraygrids = np.empty((N,), dtype=object)
-        print(f'Detected N antennas: {N}, arraygrid={self.arraygrids.shape}')
         for i in range(N):
-            xyz = (i-(N-1)/2)*axis*ds
+            xyz = (i-(N-1)/2)*ds
             ant = Antenna(xyz[0], xyz[1], xyz[2], self.frequency, self.cs, nf_pattern=nf_pattern, ff_pattern=ff_pattern)
             ant.taper_coefficient = taper[i]
             self.arraygrids[i] = ant
@@ -366,7 +464,23 @@ class AntennaArray:
         self.antennas = list(self.arraygrids.flatten())
         #self._normalize_power(power_compensation)
 
-    def add_2d_array(self, xtaper, ytaper, dx: np.ndarray, dy: np.ndarray, offset=0, nf_pattern = dipole_pattern_nf, ff_pattern = dipole_pattern_ff, power_compensation: float = None):
+    def add_2d_array(self, xtaper: Iterable[float], ytaper: Iterable[float], dx: np.ndarray, dy: np.ndarray, offset=0, nf_pattern: Callable = dipole_pattern_nf, ff_pattern: Callable = dipole_pattern_ff, power_compensation: float = None):
+        """Adds a 2D array of antenna elements to the antenna array object.
+
+        Args:
+            xtaper (Iterable[float]): A list of amplitudes for the X-axis taper
+            ytaper (Iterable[float]): A list of amplitudes for the Y-axis taper
+            dx (np.ndarray): A 3D vector that defines the local lattice X-vector
+            dy (np.ndarray): A 3D vector that defines the local lattice Y-vector
+            offset (int, optional): A row offset parameter. 0.5 creates a triangular array. Defaults to 0.
+            nf_pattern (Callable, optional): The Near-field pattern to use for the antennas. Defaults to dipole_pattern_nf.
+            ff_pattern (Callable, optional): The Far-field patter to use for the antennas. Defaults to dipole_pattern_ff.
+            power_compensation (float, optional): The power compensation coefficient to use.. Defaults to None.
+            
+        The nf_pattern and ff_pattern callables should be of function (theta, phi, r) and (theta, phi) for nf and ff respectively.
+        """
+        dx = _cast_vector(dx, (3,))
+        dy = _cast_vector(dy, (3,))
         Nx = len(xtaper)
         Ny = len(ytaper)
         dx = np.array(dx)
@@ -391,6 +505,21 @@ class AntennaArray:
                         copies: tuple = (1,1),
                         xcopy_taper: list[float] = None,
                         ycopy_taper: list[float] = None):
+        """Adds a 2D subarray of antenna elements to the antenna array object.
+
+        Args:
+            xtaper (Iterable[float]): A list of amplitudes for the X-axis taper
+            ytaper (Iterable[float]): A list of amplitudes for the Y-axis taper
+            dx (np.ndarray): A 3D vector that defines the local lattice X-vector
+            dy (np.ndarray): A 3D vector that defines the local lattice Y-vector
+            offset (float, optional): A row offset parameter. 0.5 creates a triangular array. Defaults to 0.
+            nf_pattern (Callable, optional): The Near-field pattern to use for the antennas. Defaults to dipole_pattern_nf.
+            ff_pattern (Callable, optional): The Far-field pattern to use for the antennas. Defaults to dipole_pattern_ff.
+            power_compensation (float, optional): The power compensation coefficient to use. Defaults to None.
+            copies (tuple, optional): The number of copies to create in the x and y directions. Defaults to (1,1).
+            xcopy_taper (list[float], optional): The tapering coefficients for the x copies. Defaults to None.
+            ycopy_taper (list[float], optional): The tapering coefficients for the y copies. Defaults to None.
+        """
         if xcopy_taper is None:
             xcopy_taper = [1 for _ in range(copies[0])]
         

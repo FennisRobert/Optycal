@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
-
+from __future__ import annotations
 from .interpolator import compute_interpolator_matrix, c_interpolator_c8, c_interpolator_c16
 from ..settings import GLOBAL_SETTINGS, Precision
 import numpy as np
@@ -79,9 +79,17 @@ class AntennaPattern:
         return A_full
     
     @staticmethod
-    def from_function(ff_function: Callable, theta_grid: np.ndarray, phi_grid: np.ndarray, k0: float):
-        """
-        Creates an AntennaPattern object from the given near-field and far-field functions.
+    def from_function(ff_function: Callable, theta_grid: np.ndarray, phi_grid: np.ndarray, k0: float) -> AntennaPattern:
+        """Creates an AntennaPattern object from the given near-field and far-field functions.
+
+        Args:
+            ff_function (Callable): The far-field function.
+            theta_grid (np.ndarray): The theta grid.
+            phi_grid (np.ndarray): The phi grid.
+            k0 (float): The wavenumber.
+
+        Returns:
+            AntennaPattern: The created AntennaPattern object.
         """
         antenna = AntennaPattern()
         antenna.theta_grid = theta_grid.astype(np.float32)
@@ -109,8 +117,10 @@ class AntennaPattern:
         return antenna
     
     def nf_pattern(self) -> Callable:
-        """
-        Returns a callable that evaluates the near-field pattern of the antenna.
+        """Returns a callable that evaluates the near-field pattern of the antenna.
+
+        Returns:
+            Callable: The near-field pattern evaluation function.
         """
         if GLOBAL_SETTINGS.precision == Precision.SINGLE:
             func = c_interpolator_c8

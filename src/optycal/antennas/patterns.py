@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
+from typing import Callable
 import numpy as np
 from numba import njit, vectorize, f8, c16, f8
 from numba.types import Tuple as TypeTuple
@@ -65,8 +66,17 @@ def dipole_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.nda
 
     return ex, ey, ez, hx, hy, hz
 
-def generate_gaussian_pattern(atangle, attenuation, k0):
-    
+def generate_gaussian_pattern(atangle: float, attenuation: float, k0: float) -> tuple[Callable, Callable]:
+    """Generate a Gaussian beam pattern in the azimuthal plane.
+
+    Args:
+        atangle (float): The angle of the beam in the azimuthal plane.
+        attenuation (float): The attenuation factor for the beam.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple: The far-field and near-field pattern functions.
+    """
     b = (attenuation - 20*np.log10(1+np.cos(atangle)))/(k0*np.cos(atangle)*20*np.log10(np.e))
     def ffp(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         theta = np.pi/2 - theta
@@ -113,8 +123,17 @@ def generate_gaussian_pattern(atangle, attenuation, k0):
 
     return ffp, nfp
 
-def generate_gaussian_pattern_z(atangle, attenuation, k0):
-    
+def generate_gaussian_pattern_z(atangle: float, attenuation: float, k0: float) -> tuple[Callable, Callable]:
+    """Generate a Gaussian beam pattern in the z-direction.
+
+    Args:
+        atangle (float): The angle of the beam in the azimuthal plane.
+        attenuation (float): The attenuation factor for the beam.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple: The far-field and near-field pattern functions.
+    """
     b = (20*np.log10((1+np.cos(atangle))/2)-attenuation)/(20*k0*(1-np.cos(atangle))*np.log10(np.e))
     def ffp(theta: np.ndarray, phi: np.ndarray, k0: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         theta = np.pi/2 - theta
@@ -153,6 +172,16 @@ def generate_gaussian_pattern_z(atangle, attenuation, k0):
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def half_dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate the antenna pattern of a dipole only radiating into one half-space.
+
+    Args:
+        theta (np.ndarray): The polar angles.
+        phi (np.ndarray): The azimuthal angles.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     theta = np.pi/2 - theta
     cst = np.cos(theta)
     csp = np.cos(phi)
@@ -174,6 +203,17 @@ def half_dipole_pattern_ff(theta: np.ndarray, phi: np.ndarray, k0) -> tuple[np.n
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def half_dipole_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate the near-field pattern of a dipole only radiating into one half-space.
+
+    Args:
+        theta (np.ndarray): The polar angles.
+        phi (np.ndarray): The azimuthal angles.
+        r (np.ndarray): The radial distances.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
@@ -201,7 +241,18 @@ def half_dipole_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, n
 
 @njit(cache=True, fastmath=True, parallel=False, nogil=True)
 def dipole_pattern_nf_kxyz(kx, ky, kz, r, k0):
+    """Generate the near-field pattern of a dipole in Cartesian coordinates.
 
+    Args:
+        kx (np.ndarray): The x-components of the wavevector.
+        ky (np.ndarray): The y-components of the wavevector.
+        kz (np.ndarray): The z-components of the wavevector.
+        r (np.ndarray): The radial distances.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     A = Eomni
 
     F = 1 / (np.complex64(1j) * k0 * r)
@@ -221,7 +272,17 @@ def dipole_pattern_nf_kxyz(kx, ky, kz, r, k0):
 
 @njit(cache=True, fastmath=True, parallel=False, nogil=True)
 def dipole_pattern_ff_kxyz(kx, ky, kz, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate the far-field pattern of a dipole in Cartesian coordinates.
 
+    Args:
+        kx (np.ndarray): The x-components of the wavevector.
+        ky (np.ndarray): The y-components of the wavevector.
+        kz (np.ndarray): The z-components of the wavevector.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     A = Eomni
 
     ex = A * (-kz * kx )
@@ -238,6 +299,17 @@ def dipole_pattern_ff_kxyz(kx, ky, kz, k0) -> tuple[np.ndarray, np.ndarray, np.n
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def patch_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate the near-field pattern of a patch antenna.
+
+    Args:
+        theta (np.ndarray): The polar angles.
+        phi (np.ndarray): The azimuthal angles.
+        r (np.ndarray): The radial distances.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
@@ -264,6 +336,16 @@ def patch_pattern_nf(theta, phi, r, k0) -> tuple[np.ndarray, np.ndarray, np.ndar
 
 @njit(cache=True, fastmath=True, parallel=True, nogil=True)
 def patch_pattern_ff(theta, phi, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate the far-field pattern of a patch antenna.
+
+    Args:
+        theta (np.ndarray): The polar angles.
+        phi (np.ndarray): The azimuthal angles.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The electric and magnetic fields.
+    """
     theta = np.pi/2 - theta
     cst = np.cos(theta)
     snt = np.sin(theta)
@@ -287,7 +369,19 @@ def patch_pattern_ff(theta, phi, k0) -> tuple[np.ndarray, np.ndarray, np.ndarray
     return ex, ey, ez, hx, hy, hz
 
 
-def generate_triang_pattern(Gain_peak, Gain_level, angle_level, curve_radius_angle, k0):
+def generate_triang_pattern(Gain_peak: float, Gain_level: float, angle_level: float, curve_radius_angle: float, k0: float) -> tuple[Callable, Callable]:
+    """Generate the near-field and far-field patterns of a triangular antenna.
+
+    Args:
+        Gain_peak (float): The peak gain of the antenna.
+        Gain_level (float): The level gain of the antenna.
+        angle_level (float): The angle level of the antenna.
+        curve_radius_angle (float): The curve radius angle of the antenna.
+        k0 (float): The wavenumber.
+
+    Returns:
+        _type_: _description_
+    """
     DG = Gain_level-Gain_peak
     ang = angle_level * np.pi/180
     curve_factor = curve_radius_angle*np.pi/180
@@ -352,8 +446,18 @@ def generate_triang_pattern(Gain_peak, Gain_level, angle_level, curve_radius_ang
         return (ex, ey, ez, hx, hy, hz)
 
     return _triang_pattern, _triang_pattern_ff
-    
-def generate_patch_pattern(Width, Length, k0):
+
+def generate_patch_pattern(Width: float, Length: float, k0: float) -> tuple[Callable, Callable]:
+    """Generate the near-field and far-field patterns of a patch antenna.
+
+    Args:
+        Width (float): The width of the patch.
+        Length (float): The length of the patch.
+        k0 (float): The wavenumber.
+
+    Returns:
+        tuple[Callable, Callable]: The near-field and far-field pattern functions.
+    """
     kW = k0*Width
     kL = k0*Length
     @njit(cache=True, fastmath=True, parallel=True, nogil=True)

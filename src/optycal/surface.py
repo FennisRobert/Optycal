@@ -16,7 +16,7 @@
 # <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from enum import Enum
-from typing import Tuple, Union
+from typing import Callable, Tuple, Union
 
 import numpy as np
 
@@ -38,12 +38,13 @@ def fortran_array(x):
     return np.asfortranarray(x)
 
 class Surface:
-    mesh: Mesh = Mesh
-    fresnel: SurfaceRT = SurfaceRT
-    polyorder: int = 2
-    surfacetype: SurfaceType = SurfaceType
-    cs: CoordinateSystem = CoordinateSystem
-
+    """Represents a surface in the simulation.
+    Args:
+        mesh (Mesh): The mesh representing the surface.
+        fresnel (SurfaceRT): The Fresnel reflection/transmission model.
+        polyorder (int, optional): The polynomial order for the surface representation. Defaults to 2.
+        name (str, optional): The name of the surface. Defaults to "UnnamedSurface".
+    """
     def __init__(
         self,
         mesh: Mesh,
@@ -75,7 +76,12 @@ class Surface:
     
     @property
     def fieldshape(self) -> tuple:
-        return (3, self.npoints)
+        """Returns the shape of the field.
+
+        Returns:
+            tuple: The shape of the field.
+        """
+        return (3, self.n_points)
     
     def __post_init__(self):
         pass
@@ -83,12 +89,20 @@ class Surface:
     def __gt__(self, other) -> tuple:
         return (self, other)
     
-    def catch(self, fr12: tuple, k0: float):
+    def catch(self, fr12: tuple[Field, Field], k0: float):
+        """Catches the fields from the given tuple and associates them with the surface.
+
+        Args:
+            fr12 (tuple): A tuple containing the fields to be caught.
+            k0 (float): The wavenumber in the medium.
+        """
         fr1, fr2 = fr12
         self.add_field(1, fr1, k0)
         self.add_field(2, fr2, k0)
         
     def clear_fields(self):
+        """Clears the fields associated with the surface.
+        """
         self.E1: np.ndarray = np.zeros(self.fieldshape, dtype=np.complex128)
         self.E2: np.ndarray = np.zeros(self.fieldshape, dtype=np.complex128)
         self.H1: np.ndarray = np.zeros(self.fieldshape, dtype=np.complex128)
@@ -96,6 +110,14 @@ class Surface:
         self.k0 = None
         
     def trimap(self, field: np.ndarray) -> np.ndarray:
+        """Computes the average field values over the triangles.
+
+        Args:
+            field (np.ndarray): The field values to be averaged.
+
+        Returns:
+            np.ndarray: The averaged field values.
+        """
         if self.polyorder == 1:
             tris = self.mesh.triangles
             return (field[tris[0,:]] + field[tris[1,:]] + field[tris[2,:]]) / 3
@@ -104,35 +126,72 @@ class Surface:
             edges = (field[e2t[0,:]] + field[e2t[1,:]] + field[e2t[2,:]]) / 3
 
     def field_coordinates(self) -> np.ndarray:
+        """Returns the coordinates of the field.
+
+        Returns:
+            np.ndarray: The coordinates of the field.
+        """
         if self.polyorder == 1:
             return self.mesh.g.vertices
         elif self.polyorder == 2:
             return self.mesh.g.edge_centers
 
     def field_normals(self) -> np.ndarray:
+        """Returns the normals of the field.
+
+        Returns:
+            np.ndarray: The normals of the field.
+        """
         if self.polyorder == 1:
             return self.mesh.g.vertex_normals
         elif self.polyorder == 2:
             return self.mesh.g.edge_normals
 
     def trianglewise_indices(self) -> np.ndarray:
+        """Returns the triangle-wise indices for the surface.
+
+        Returns:
+            np.ndarray: The triangle-wise indices.
+        """
         if self.polyorder == 1:
             return self.mesh.triangles
         elif self.polyorder == 2:
             return self.mesh.t2e
         
     def normals(self) -> np.ndarray:
+        """Returns the triangle normals of the surface.
+
+        Returns:
+            np.ndarray: The normals of the field.
+        """
         return self.mesh.g.normals
     
     @property
     def xyz(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the coordinates of the mesh vertices.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]: The coordinates of the mesh vertices.
+        """
         return self.mesh.g.xyz
     
     @property
     def gxyz(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the coordinates of the mesh vertices in the global coordinate system.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]: The coordinates of the mesh vertices in the global coordinate system.
+        """
         return self.mesh.g.xyz
 
     def write_field(self, side: int, field: Field, k0: float):
+        """Writes the field data to the surface.
+
+        Args:
+            side (int): The side of the surface (1 or 2).
+            field (Field): The field data to write.
+            k0 (float): The wavenumber in the medium.
+        """
         if side == 1:
             self.E1 = field.E
             self.H1 = field.H
@@ -143,6 +202,13 @@ class Surface:
             self.k0 = k0
     
     def add_field(self, side: int, field: Field, k0: float):
+        """Adds the field data to the surface.
+
+        Args:
+            side (int): The side of the surface (1 or 2).
+            field (Field): The field data to add.
+            k0 (float): The wavenumber in the medium.
+        """
         if side == 1:
             self.E1 += field.E
             self.H1 += field.H
@@ -153,7 +219,14 @@ class Surface:
             self.k0 = k0
 
     def vertex_field(self, side: int = 0) -> Field:
+        """Returns the vertex field for the given side.
 
+        Args:
+            side (int, optional): The side of the surface (1 or 2). Defaults to 0.
+
+        Returns:
+            Field: The vertex field for the given side.
+        """
         E = self.E1 + self.E2
         H = self.H1 + self.H2
         if side == 1:
@@ -180,6 +253,11 @@ class Surface:
     def integration_fields(
         self,
     ) -> Union[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns the integration fields for the surface.
+
+        Returns:
+            Union[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: The integration fields for the surface.
+        """
         if self.polyorder == 1:
             tris = self.mesh.triangles
             E1 = (
@@ -213,33 +291,79 @@ class Surface:
         return None
 
     def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray, side=-1) -> Field:
+        """Exposes the given xyz coordinates based on the E and H fields on the surface.
+
+        Args:
+            gx (np.ndarray): The x-coordinates to expose.
+            gy (np.ndarray): The y-coordinates to expose.
+            gz (np.ndarray): The z-coordinates to expose.
+            side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+
+        Returns:
+            Field: The exposed field.
+        """
         return sc_expose_xyz(self, gx, gy, gz, side=side)
     
     def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray, side=-1) -> Field:
+        """Exposes the given theta and phi coordinates based on the E and H fields on the surface.
+
+        Args:
+            gtheta (np.ndarray): The theta coordinates to expose.
+            gphi (np.ndarray): The phi coordinates to expose.
+            side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+
+        Returns:
+            Field: The exposed field.
+        """
         return sc_expose_thetaphi(self, gtheta, gphi, side=side)
     
     def expose_surface(self, target, side=-1) -> Field:
+        """Exposes the surface fields based on the fields on the surface.
+
+        Args:
+            target (_type_): The target surface to expose.
+            side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+
+        Returns:
+            Field: The exposed field.
+        """
         fr1, fr2 = sc_expose_surface(self, target, side=side)
         target.add_field(1, fr1, self.k0)
         target.add_field(2, fr2, self.k0)
     
     def expose_ff(self, target: FarFieldSpace, side=-1) -> Field:
+        """Exposes the far-field data based on the fields on the surface.
+
+        Args:
+            target (FarFieldSpace): The target far-field space to expose.
+            side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+
+        Returns:
+            Field: The exposed field.
+        """
         fr = sc_expose_thetaphi(self, target.theta, target.phi, side=side)
         target.field = fr
         return fr
         
-    @property
-    def fieldshape(self):
-        return (3, self.n_points)
 
     @property
     def side1(self) -> Field:
+        """Returns the field data for side 1.
+
+        Returns:
+            Field: The field data for side 1.
+        """
         return Field(
             E=self.E1, H=self.H1, creator=self.name, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs
         )
 
     @property
     def side2(self) -> Field:
+        """Returns the field data for side 2.
+
+        Returns:
+            Field: The field data for side 2.
+        """
         return Field(
             E=self.E2, H=self.H2, creator=self.name, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs
         )
@@ -248,6 +372,11 @@ class Surface:
         raise NotImplementedError
     
     def powerflux(self):
+        """Calculates the total power flux on the surface.
+
+        Returns:
+            Tuple[float, float]: The total power flux for side 1 and side 2.
+        """
         Ptot1 = 0
         Ptot2 = 0
         if self.polyorder==2:
@@ -274,8 +403,14 @@ class Surface:
             
             return Ptot1, Ptot2
     
-    def powerflux_Eonly(self):
-        from emerge.library.lib import Z0
+    def powerflux_Eonly(self) -> Tuple[float, float]:
+        """Calculates the total power flux on the surface based on E fields only.
+
+        Returns:
+            Tuple[float, float]: The total power flux for side 1 and side 2.
+        """
+        
+        Z0 = 376.730313668
         tris = self.mesh.triangles
         Ptot1 = 0
         Ptot2 = 0
@@ -323,7 +458,15 @@ class Surface:
         Po2 = np.sum(S2n * A)
         return Po1, Po2
     
-    def generate_antenna_patterns(self, NSamples: int):
+    def generate_antenna_patterns(self, NSamples: int) -> Tuple[Callable, Callable]:
+        """Generates the far-field and near-field pattern functions.
+
+        Args:
+            NSamples (int): The number of samples to use for the patterns.
+
+        Returns:
+            Tuple[Callable, Callable]: The near-field and far-field pattern functions.
+        """
         from scipy.interpolate import RegularGridInterpolator
         phis = np.linspace(-np.pi,np.pi,NSamples)
         thetas = np.linspace(-np.pi,np.pi,NSamples)
@@ -379,12 +522,25 @@ class Surface:
         origin: np.ndarray,
         k0: float,
         cs: CoordinateSystem = GCS) -> Surface:
-        
+        """Imports a surface model from the given parameters.
+
+        Args:
+            vertices (np.ndarray): The vertex positions of the surface.
+            triangles (np.ndarray): The triangle connectivity of the surface.
+            E (np.ndarray): The electric field distribution on the surface.
+            H (np.ndarray): The magnetic field distribution on the surface.
+            origin (np.ndarray): The origin point for the surface.
+            k0 (float): The wavenumber in free space.
+            cs (CoordinateSystem, optional): The coordinate system for the surface. Defaults to GCS.
+
+        Returns:
+            Surface: The imported surface model.
+        """
         mesh = Mesh(vertices, cs)
         mesh.align_from_origin(origin[0], origin[1], origin[2])
         mesh.set_triangles(triangles)
         surface = Surface(mesh, FRES_AIR, 2, "ImportedSurface")
-        surface.write_field(2, Field(E=E, H=H), k0)
+        surface.write_field(2, Field(E=np.array(E), H=np.array(H)), k0)
         return surface
 
 class OrientableSurface(Surface):
@@ -425,6 +581,16 @@ class Sphere(OrientableSurface):
 def sc_expose_surface(
     source: Surface, target: Surface, side: int = -1
 ) -> Field:
+    """Expose the surface fields from the source to the target.
+
+    Args:
+        source (Surface): The source surface to sample from.
+        target (Surface): The target surface to expose the fields to.
+        side (int, optional): The side of the surface to sample from. Defaults to -1.
+
+    Returns:
+        Field: The exposed electric and magnetic fields.
+    """
     fres = target.fresnel
     E1in = source.E1
     E2in = source.E2
@@ -494,7 +660,18 @@ def sc_expose_surface(
 
 
 def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, side: int = -1) -> Field:
+    """Expose the surface fields at specific Cartesian coordinates.
 
+    Args:
+        source (Surface): The source surface to sample from.
+        x (np.ndarray): The x-coordinates to sample.
+        y (np.ndarray): The y-coordinates to sample.
+        z (np.ndarray): The z-coordinates to sample.
+        side (int, optional): The side of the surface to sample from. Defaults to -1.
+
+    Returns:
+        Field: The sampled electric and magnetic fields.
+    """
     E1in = source.E1
     E2in = source.E2
     H1in = source.H1
@@ -547,7 +724,17 @@ def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
 
 
 def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side: int):
-    #(E1in, H1in, E2in, H2in) = source.integration_fields()
+    """Expose the surface fields at specific spherical coordinates.
+
+    Args:
+        source (Surface): The source surface to sample from.
+        theta (np.ndarray): The polar angles to sample.
+        phi (np.ndarray): The azimuthal angles to sample.
+        side (int): The side of the surface to sample from.
+
+    Returns:
+        Field: The sampled electric and magnetic fields.
+    """
     E1in = source.E1
     E2in = source.E2
     

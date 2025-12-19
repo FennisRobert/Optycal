@@ -15,80 +15,21 @@
 # along with this program; if not, see
 # <https://www.gnu.org/licenses/>.
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Callable, List, Tuple
-
+from typing import List, Tuple
+from .material import Material
 import numpy as np
 from numba import c16, njit
-
 from .util import check
-
-
-@dataclass
-class Material:
-    name: str
-    er: float
-    ur: float
-    tand: float
-    sigma: float = 0
-    sigma_m: float = 0
-    sigma_x: float = 0
-    sigma_y: float = 0
-    sigma_mx: float = 0
-    sigma_my: float = 0
-    color: str = "#d5d5d5"
-    opacity: float = 1.0
-    fer: Callable = lambda f: 0
-    fur: Callable = lambda f: 0
-    ftand: Callable = lambda f: 0
-    fsigma: Callable = lambda f: 0
-    fsigma_m: Callable = lambda f: 0
-    fsigma_x: Callable = lambda f: 0
-    fsigma_y: Callable = lambda f: 0
-    fsigma_mx: Callable = lambda f: 0
-    fsigma_my: Callable = lambda f: 0
-
-    def __post_init__(self):
-        self.fsigma_x = lambda x, y, z: self.sigma_x + 0*x
-        self.fsigma_y = lambda x, y, z: self.sigma_y + 0*x
-        self.fsigma_mx = lambda x, y, z: self.sigma_mx + 0*x
-        self.fsigma_my = lambda x, y, z: self.sigma_my + 0*x
-        self.fer = lambda x, y, z: self.er + 0*x
-        self.fcer = lambda x, y, z: self.er * (1 + 1j * self.tand) + 0*x
-        self.fur = lambda x, y, z: self.ur + 0*x
-        self.ftand = lambda x, y, z: self.tand + 0*x
-        self.fsigma = lambda x, y, z: self.sigma + 0*x
-        self.fsigma_m = lambda x, y, z: self.sigma_m + 0*x
-        self.fcer_dl = lambda x, y, z: self.er *(1 - 1j* self.tand - 1j*self.fsigma(x,y,z)/(2*np.pi*1e9*8.854187818814e-12))
-        
-    @property
-    def cer(self):
-        return self.er * (1 + 1j * self.tand)
-
-    @property
-    def n(self):
-        return np.sqrt(self.cer * self.ur)
-
-    def csigma(self, x, y):
-        return np.abs(self.fsigma_x(x, y) + self.fsigma_y(x, y))
-        
-MAT_AIR = Material("air", 1, 1, 0, color="#C5E0F2", opacity=0.1)
-MAT_COPPER = Material("copper", 1, 1, 0, sigma=5.8e7, color="#9e6919")
-MAT_TEFLON = Material("teflon", 2.1, 1, 0.0002, color="#ffffff")
-MAT_WATER = Material("water", 80, 1, 0.1,color="#307eeb", opacity=0.5)
-MAT_FR4 = Material("fr4", 4.4, 1, 0.00,color="#58943a")
-MAT_PEI = Material("Pei", 1.008, 1, 0.001, color="#cccccc")
-MAT_LAMINATE = Material("laminate", 3.6, 1, 0.01, color="#a49967")
-MAT_ALUMINUM = Material("aluminum", 1, 1, 0, sigma=3.5e7,color="#c1c1c1")
-
+from abc import ABC
 
 @njit(c16[:,:](c16[:,:], c16[:,:]), cache=True, nogil=True)
 def mat_mul(A, B):
-    out = np.empty((3,B.shape[1]), dtype=B.dtype)
-    out[0,:] = A[0,0]*B[0,:] + A[0,1]*B[1,:] + A[0,2]*B[2,:]
-    out[1,:] = A[1,0]*B[0,:] + A[1,1]*B[1,:] + A[1,2]*B[2,:]
-    out[2,:] = A[2,0]*B[0,:] + A[2,1]*B[1,:] + A[2,2]*B[2,:]
+    #Multiply a 2x2 matrix A with 2xN matrix B
+    out = np.empty((2,2), dtype=B.dtype)
+    out[0,0] = A[0,0]*B[0,0] + A[0,1]*B[1,0]
+    out[0,1] = A[0,0]*B[0,1] + A[0,1]*B[1,1]
+    out[1,0] = A[1,0]*B[0,0] + A[1,1]*B[1,0]
+    out[1,1] = A[1,0]*B[0,1] + A[1,1]*B[1,1]
     return out
 
 
@@ -129,11 +70,20 @@ def TtoS(T: np.ndarray) -> np.ndarray:
 
 class MultiLayer(SurfaceRT):
     def __init__(
-        self, k0, materials: List[Material], ds: List[float], nangles: int = 100
+        self, k0: float, materials: List[Material], ds: List[float], nangles: int = 100
     ):
+        """Creates a multilayer surface with given materials and thicknesses.
+
+        Args:
+            k0 (float): The propagation constant to evaluate the multilayer at
+            materials (List[Material]): The list of materials in the multilayer
+            ds (List[float]): The list of thicknesses for each layer
+            nangles (int, optional): The number of angles to sample. Defaults to 100.
+        """
         self.materials = materials
         self.ds = ds
         self.k0 = k0
+        self.freq = k0 / (2 * np.pi) * 299792458
 
         angs = np.linspace(0, np.pi / 2, nangles)
         self.angles = angs
@@ -168,11 +118,11 @@ class MultiLayer(SurfaceRT):
     
     def _compute_coefficients(self, angin: np.ndarray) -> Tuple[np.ndarray]:
         k0 = self.k0
-        check.mustbeequal(self.materials, self.ds)
-        check.mustbe(angin, np.ndarray)
+        #check.mustbeequal(self.materials, self.ds)
+        #check.mustbe(angin, np.ndarray)
         Nlayers = len(self.ds)
         ds = self.ds
-        ers, tands, urs = zip(*[(m.er, m.tand, m.ur) for m in self.materials])
+        ers, tands, urs = zip(*[(m.er.scalar(self.freq), m.tand.scalar(self.freq), m.ur.scalar(self.freq)) for m in self.materials])
         ns = [
             np.sqrt(er * ur * (1 - 1j * tand)) for er, ur, tand in zip(ers, urs, tands)
         ]

@@ -35,7 +35,7 @@ ant.expose_ff(sphere)
 # Now we want to plot our results. For simplicity we have plot-ff functions in Optycal.
 # As you can see, we have the phi, theta, and field data at our disposal. The solutions are in .field. In this case we plot normE.
 opt.plot_ff(azi.phi, azi.field.normE)
-opt.plot_ff(ele.theta, ele.field.normE)
+opt.plot_ff(ele.theta, ele.field.normE/opt.Eiso, dB=True)
 
 # We can also display our antenna diagram. We first create a PyVista based display object.
 display = opt.OptycalDisplay()

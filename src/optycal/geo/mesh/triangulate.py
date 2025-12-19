@@ -27,7 +27,16 @@ from loguru import logger
 from itertools import combinations
 
 
-def is_self_intersecting(loopx, loopy):
+def is_self_intersecting(loopx: List[float], loopy: List[float]) -> bool:
+    """Checks if a polygon defined by loopx and loopy is self-intersecting.
+
+    Args:
+        loopx (List[float]): The x-coordinates of the polygon vertices.
+        loopy (List[float]): The y-coordinates of the polygon vertices.
+
+    Returns:
+        bool: True if the polygon is self-intersecting, False otherwise.
+    """
     xs = np.array(loopx + loopx[0:2])
     ys = np.array(loopy + loopy[0:2])
     dx = xs[1:]-xs[:-1]
@@ -100,7 +109,6 @@ class _DebugState:
         return _DebugState(True, step)
 
 _NODEBUG = _DebugState(False)
-
 _FLOATLIST = typeof([1.0, 2.0])
 _INTLIST = typeof([1, 2])
 
@@ -141,12 +149,37 @@ def calculate_all_angles(angs, angsc, loopx, loopy):
 
 
 def mag(S):
+    """Calculates the magnitude of a 2D vector.
+
+    Args:
+        S (tuple): A tuple representing the 2D vector (x, y).
+
+    Returns:
+        float: The magnitude of the vector.
+    """
     return np.sqrt(S[0] ** 2 + S[1] ** 2)
 
 def normalize(S):
+    """Normalizes a 2D vector.
+
+    Args:
+        S (tuple): A tuple representing the 2D vector (x, y).
+
+    Returns:
+        tuple: A tuple representing the normalized vector.
+    """
     return (S[0] / mag(S), S[1] / mag(S))
 
 def rotate(S, angle):
+    """Rotates a 2D vector by a given angle.
+
+    Args:
+        S (tuple): A tuple representing the 2D vector (x, y).
+        angle (float): The angle in radians to rotate the vector.
+
+    Returns:
+        tuple: A tuple representing the rotated vector.
+    """
     c = (S[0]+S[1]*1j)*np.exp(1j*angle)
     #c, s = np.cos(angle), np.sin(angle)
     return (c.real, c.imag)
@@ -155,7 +188,22 @@ def advancing_front_triangulation(
     polygon: Polygon, dsmax: float, growthrate: float = 0.6, refinement_steps=5, 
     xaxis: np.ndarray = np.array([1,0,0]),
     yaxis: np.ndarray = np.array([0,1,0]), refine=True, debugmode: _DebugState = _NODEBUG, safe_mode: bool = False) -> tuple:
-    
+    """Performs advancing front triangulation on a polygon.
+
+    Args:
+        polygon (Polygon): The polygon to triangulate.
+        dsmax (float): The maximum size of the triangles.
+        growthrate (float, optional): The growth rate for the triangulation. Defaults to 0.6.
+        refinement_steps (int, optional): The number of refinement steps. Defaults to 5.
+        xaxis (np.ndarray, optional): The x-axis direction. Defaults to np.array([1,0,0]).
+        yaxis (np.ndarray, optional): The y-axis direction. Defaults to np.array([0,1,0]).
+        refine (bool, optional): Whether to refine the mesh. Defaults to True.
+        debugmode (_DebugState, optional): The debug mode state. Defaults to _NODEBUG.
+        safe_mode (bool, optional): Whether to enable safe mode. Defaults to False.
+
+    Returns:
+        tuple: The resulting triangles and their properties.
+    """
     if refine:
         poly = polygon.refine_edges(dsmax)
     else:
@@ -200,8 +248,6 @@ def advancing_front_triangulation(
     previous_state = len(loopx)
     failure = False
     meshing_step_counter = 0
-    
-
     
     while len(loopx) > 4:
         
@@ -396,6 +442,18 @@ def advancing_front_triangulation(
 
 def advancing_front_triangulation_ps(
     t1: list, t2: list, ps, growthrate: float = 0.6, refinement_steps=5,  ) -> tuple:
+    """Performs advancing front triangulation on a polygon defined by two lists of points.
+
+    Args:
+        t1 (list): The x-coordinates of the polygon vertices.
+        t2 (list): The y-coordinates of the polygon vertices.
+        ps (_type_): _description_
+        growthrate (float, optional): The growth rate for the triangulation. Defaults to 0.6.
+        refinement_steps (int, optional): The number of refinement steps. Defaults to 5.
+
+    Returns:
+        tuple: The resulting triangles and their properties.
+    """
     polygon = Polygon([Point(x, y) for x, y in zip(t1, t2)])
     return advancing_front_triangulation(polygon, ps, growthrate, refinement_steps)
 
