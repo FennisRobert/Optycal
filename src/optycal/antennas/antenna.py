@@ -18,7 +18,7 @@ from __future__ import annotations
 from ..geo.cs import CoordinateSystem, GCS
 import numpy as np
 from .patterns import dipole_pattern_ff, dipole_pattern_nf
-from ..field import Field
+from emsutil.emdata import EHField, EHFieldFF
 from ..surface import Surface
 from ..samplespace import FarFieldSpace
 from .compiled_functions import _c_cross_comp, _c_dot_comp
@@ -53,6 +53,8 @@ class Antenna:
         self.aux_coefficients: list[complex] = [1.0,]
         self.active: float = 1
 
+        self.power: float | None = None
+        
         if ff_pattern is None:
             logger.debug('Defaulting to dipole farfield pattern')
             self.ff_pattern: Callable = dipole_pattern_ff
@@ -193,7 +195,7 @@ class Antenna:
         logger.debug(newcs)
         self._deformed_cs = newcs
 
-    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray) -> Field:
+    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray) -> EHField:
         """
         Compute the nearfield of the antenna at the points (gx, gy, gz)
         """
@@ -228,10 +230,11 @@ class Antenna:
         H[0,:] = hx*B
         H[1,:] = hy*B
         H[2,:] = hz*B
-        return Field(E=E, H=H)
+        
+        return EHField(_E=E, _H=H, x=gx, y=gy, z=gz, freq=self.frequency, aux={'creator': self.name})
     
 
-    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> Field:
+    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> EHFieldFF:
         """
         Compute the farfield of the antenna at the points (theta, phi)
         """
@@ -258,10 +261,10 @@ class Antenna:
 
         E = B * E1
         H = B * H1
-        return Field(E=E, H=H, theta=gtheta, phi=gphi)
+        return EHFieldFF(_E=E, _H=H, theta=gtheta, phi=gphi, Ptot=self.power)
     
 
-    def expose_kxyz(self, kx: np.ndarray, ky: np.ndarray, kz: np.ndarray) -> Field:
+    def expose_kxyz(self, kx: np.ndarray, ky: np.ndarray, kz: np.ndarray) -> EHFieldFF:
         """
         Compute the farfield of the antenna at the points (theta, phi)
         """
@@ -276,9 +279,11 @@ class Antenna:
         H = B * H1
 
         #logger.debug("Field Computation Complete")
-        return Field(E=E, H=H)
+        theta = np.arccos(kzl)
+        phi = np.arctan2(kyl, kxl)
+        return EHFieldFF(_E=E, _H=H, theta=theta, phi=phi, Ptot=self.power)
     
-    def expose_surface(self, surface: Surface, add_field: bool = True) -> Field:
+    def expose_surface(self, surface: Surface, add_field: bool = True) -> EHField:
         """Expose a surface object with EM energy
 
         Args:
@@ -386,15 +391,16 @@ class Antenna:
         H2[0,:] = Hrefx*other + Htransx*same
         H2[1,:] = Hrefy*other + Htransy*same
         H2[2,:] = Hrefz*other + Htransz*same
+
+        fr1 = EHField(_E=E1, _H=H1, x=x, y=y, z=z, freq=self.frequency)
+        fr2 = EHField(_E=E2, _H=H2, x=x, y=y, z=z, freq=self.frequency)
         
-        fr1 = Field(E=E1, H=H1)
-        fr2 = Field(E=E2, H=H2)
         if add_field:
-            surface.add_field(1, fr1, self.k0)
-            surface.add_field(2, fr2, self.k0)
+            surface.add_field(1, E=E1, H=H1, k0=self.k0)
+            surface.add_field(2, E=E2, H=H2, k0=self.k0)
         return fr1, fr2
     
-    def expose_ff(self, target: FarFieldSpace) -> Field:
+    def expose_ff(self, target: FarFieldSpace) -> EHFieldFF:
         """Expose a FarFieldSpace object
 
         Args:
@@ -432,7 +438,8 @@ class Antenna:
         logger.debug(f"Measured power: {Po} W")
         self.correction_coefficient = self.correction_coefficient * np.sqrt(power / Po)
         logger.debug(f"Compensation factor: {self.correction_coefficient}")
-    
+        self.power = power
+        
     def accelerate(self) -> InterpolatingAntenna:
         """Return an antenna that uses an interpolation function instead of the antenna function (midly faster)
 
@@ -455,7 +462,7 @@ class InterpolatingAntenna(Antenna):
         self.interp_pattern: AntennaPattern = AntennaPattern.from_function(self.ff_pattern,th, ph, self.k0)
 
     
-    def expose_thetaphi(self, gtheta, gphi) -> Field:
+    def expose_thetaphi(self, gtheta, gphi) -> EHFieldFF:
         gtheta = gtheta.astype(np.float32)
         gphi = gphi.astype(np.float32)
         gxyz = np.array(self.gxyz).astype(np.float64)
@@ -468,9 +475,9 @@ class InterpolatingAntenna(Antenna):
                                       self.cs.global_basis,
                                       self.camp,
                                       self.k0)
-        return Field(E=E, H=H, theta=gtheta, phi=gphi)
+        return EHFieldFF(_E=E, _H=H, theta=gtheta, phi=gphi)
     
-    def expose_xyz(self, gx, gy, gz) -> Field:
+    def expose_xyz(self, gx, gy, gz) -> EHField:
         gxyz = np.array(self.gxyz)
         E, H = expose_xyz_single(gx,
                                  gy, 
@@ -482,9 +489,9 @@ class InterpolatingAntenna(Antenna):
                                  self.cs.global_basis,
                                  self.camp,
                                  self.k0)
-        return Field(E=E, H=H, x=gx, y=gy, z=gz)
+        return EHField(_E=E, _H=H, x=gx, y=gy, z=gz, freq=self.frequency)
     
-    def expose_surface(self, surface: Surface, add_field = True) -> tuple[Field, Field]:
+    def expose_surface(self, surface: Surface, add_field = True) -> tuple[EHField, EHField]:
         gxyz = np.array(self.gxyz)
         E1, H1, E2, H2 = expose_surface_single(surface.gxyz, 
                                                surface.field_normals(),
@@ -496,10 +503,11 @@ class InterpolatingAntenna(Antenna):
                                                self.cs.global_basis,
                                                self.camp,
                                                self.k0)
-        surface.add_field(1, Field(E=E1, H=H1), self.k0)
-        surface.add_field(2, Field(E=E2, H=H2), self.k0)
-        return Field(E=E1, H=H1), Field(E=E2, H=H2)
-    
+        surface.add_field(1, E=E1, H=H1, k0=self.k0)
+        surface.add_field(2, E=E2, H=H2, k0=self.k0)
+        return (EHField(x=surface.gx, y=surface.gy, z=surface.gz, _E=E1, _H=H1, freq=self.frequency), 
+               EHField(x=surface.gx, y=surface.gy, z=surface.gz, _E=E2, _H=H2, freq=self.frequency))
+
 class EMergeAntenna(Antenna):
     
     def __init__(self, x: float, y: float, z: float, emdata: dict, 
@@ -514,7 +522,7 @@ class EMergeAntenna(Antenna):
         super().__init__(x, y, z, frequency, cs, nf_pattern, ff_pattern, name)
 
     
-    def expose_thetaphi(self, gtheta, gphi) -> Field:
+    def expose_thetaphi(self, gtheta, gphi) -> EHFieldFF:
         gtheta = gtheta.astype(np.float32)
         gphi = gphi.astype(np.float32)
         gxyz = np.array(self.gxyz).astype(np.float64)
@@ -527,9 +535,9 @@ class EMergeAntenna(Antenna):
                                       self.cs.global_basis,
                                       self.camp,
                                       self.k0)
-        return Field(E=E, H=H, theta=gtheta, phi=gphi)
+        return EHFieldFF(_E=E, _H=H, theta=gtheta, phi=gphi)
     
-    def expose_xyz(self, gx, gy, gz) -> Field:
+    def expose_xyz(self, gx, gy, gz) -> EHField:
         gxyz = np.array(self.gxyz)
         E, H = expose_xyz_single(gx,
                                  gy, 
@@ -541,9 +549,9 @@ class EMergeAntenna(Antenna):
                                  self.cs.global_basis,
                                  self.camp,
                                  self.k0)
-        return Field(E=E, H=H, x=gx, y=gy, z=gz)
+        return EHField(_E=E, _H=H, x=gx, y=gy, z=gz, freq=self.frequency)
     
-    def expose_surface(self, surface: Surface, add_field = True) -> tuple[Field, Field]:
+    def expose_surface(self, surface: Surface, add_field = True) -> tuple[EHField, EHField]:
         gxyz = np.array(self.gxyz)
         E1, H1, E2, H2 = expose_surface_single(surface.gxyz, 
                                                surface.field_normals(),
@@ -555,6 +563,8 @@ class EMergeAntenna(Antenna):
                                                self.cs.global_basis,
                                                self.camp,
                                                self.k0)
-        surface.add_field(1, Field(E=E1, H=H1), self.k0)
-        surface.add_field(2, Field(E=E2, H=H2), self.k0)
-        return Field(E=E1, H=H1), Field(E=E2, H=H2)
+        
+        surface.add_field(1, E=E1, H=H1, k0=self.k0)
+        surface.add_field(2, E=E2, H=H2, k0=self.k0)
+        return (EHField(_E=E1, _H=H1, x=surface.gx, y=surface.gy, z=surface.gz, freq=self.frequency),
+                EHField(_E=E2, _H=H2, x=surface.gx, y=surface.gy, z=surface.gz, freq=self.frequency))

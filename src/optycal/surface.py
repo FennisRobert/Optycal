@@ -25,7 +25,7 @@ from .samplespace import FarFieldSpace
 from .geo import Mesh, CoordinateSystem
 from .geo.cs import GCS
 from .multilayer import SurfaceRT, FRES_AIR
-from .field import Field
+from emsutil.emdata import EHField, EHFieldFF
 from .settings import GLOBAL_SETTINGS
 from numba_progress import ProgressBar
 from loguru import logger
@@ -75,6 +75,10 @@ class Surface:
         return f'Surface[{self.name}]'
     
     @property
+    def frequency(self) -> float:
+        return self.k0 * 299792458 / (2*np.pi)
+    
+    @property
     def fieldshape(self) -> tuple:
         """Returns the shape of the field.
 
@@ -83,13 +87,21 @@ class Surface:
         """
         return (3, self.n_points)
     
+    def _get_side_surfs(self) -> tuple[Surface, Surface | None]:
+        if self.fresnel.thickness == 0.0:
+            return (self, None)
+        
+        th = self.fresnel.thickness
+        surf1, surf2 = Surface(self.mesh.normal_displacement(-th/2), self.fresnel, 2), Surface(self.mesh.normal_displacement(th/2), self.fresnel, 2)
+        return (surf1, surf2)
+    
     def __post_init__(self):
         pass
     
     def __gt__(self, other) -> tuple:
         return (self, other)
     
-    def catch(self, fr12: tuple[Field, Field], k0: float):
+    def catch(self, fr12: tuple[EHField, EHField], k0: float):
         """Catches the fields from the given tuple and associates them with the surface.
 
         Args:
@@ -184,7 +196,7 @@ class Surface:
         """
         return self.mesh.g.xyz
 
-    def write_field(self, side: int, field: Field, k0: float):
+    def write_field(self, side: int, E: np.ndarray, H: np.ndarray, k0: float):
         """Writes the field data to the surface.
 
         Args:
@@ -193,15 +205,15 @@ class Surface:
             k0 (float): The wavenumber in the medium.
         """
         if side == 1:
-            self.E1 = field.E
-            self.H1 = field.H
+            self.E1 = E
+            self.H1 = H
             self.k0 = k0
         elif side == 2:
-            self.E2 = field.E
-            self.H2 = field.H
+            self.E2 = E
+            self.H2 = H
             self.k0 = k0
     
-    def add_field(self, side: int, field: Field, k0: float):
+    def add_field(self, side: int, E: np.ndarray, H: np.ndarray, k0: float):
         """Adds the field data to the surface.
 
         Args:
@@ -210,15 +222,15 @@ class Surface:
             k0 (float): The wavenumber in the medium.
         """
         if side == 1:
-            self.E1 += field.E
-            self.H1 += field.H
+            self.E1 += E
+            self.H1 += H
             self.k0 = k0
         elif side == 2:
-            self.E2 += field.E
-            self.H2 += field.H
+            self.E2 += E
+            self.H2 += H
             self.k0 = k0
 
-    def vertex_field(self, side: int = 0) -> Field:
+    def vertex_field(self, side: int = 0) -> EHField:
         """Returns the vertex field for the given side.
 
         Args:
@@ -238,8 +250,8 @@ class Surface:
 
         gv = self.mesh.g.vertices
         if self.polyorder == 1:
-            return Field(E=E, H=H, x=gv[0,:], y=gv[1,:], z=gv[2,:], creator=self.name)
-        
+            return EHField(_E=E, _H=H, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
+
         if self.polyorder == 2:
             
             E2 = np.zeros((3, self.mesh.nvertices), dtype=np.complex128)
@@ -248,7 +260,7 @@ class Surface:
                 ies = np.array(self.mesh.v2e[iv])
                 E2[:, iv] = E[:, ies].mean(axis=1)
                 H2[:, iv] = H[:, ies].mean(axis=1)
-            return Field(E=E2, H=H2, x=gv[0,:], y=gv[1,:], z=gv[2,:], creator=self.name)
+            return EHField(_E=E2, _H=H2, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
 
     def integration_fields(
         self,
@@ -290,7 +302,7 @@ class Surface:
             return (E1, H1, E2, H2)
         return None
 
-    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray, side=-1) -> Field:
+    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray, side=-1) -> EHField:
         """Exposes the given xyz coordinates based on the E and H fields on the surface.
 
         Args:
@@ -304,7 +316,7 @@ class Surface:
         """
         return sc_expose_xyz(self, gx, gy, gz, side=side)
     
-    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray, side=-1) -> Field:
+    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray, side=-1) -> EHField:
         """Exposes the given theta and phi coordinates based on the E and H fields on the surface.
 
         Args:
@@ -317,7 +329,7 @@ class Surface:
         """
         return sc_expose_thetaphi(self, gtheta, gphi, side=side)
     
-    def expose_surface(self, target, side=-1) -> Field:
+    def expose_surface(self, target: Surface, side=-1) -> EHField:
         """Exposes the surface fields based on the fields on the surface.
 
         Args:
@@ -328,10 +340,10 @@ class Surface:
             Field: The exposed field.
         """
         fr1, fr2 = sc_expose_surface(self, target, side=side)
-        target.add_field(1, fr1, self.k0)
-        target.add_field(2, fr2, self.k0)
+        target.add_field(1, fr1.E, fr1.H, self.k0)
+        target.add_field(2, fr2.E, fr1.H, self.k0)
     
-    def expose_ff(self, target: FarFieldSpace, side=-1) -> Field:
+    def expose_ff(self, target: FarFieldSpace, side=-1) -> EHField:
         """Exposes the far-field data based on the fields on the surface.
 
         Args:
@@ -347,26 +359,24 @@ class Surface:
         
 
     @property
-    def side1(self) -> Field:
+    def side1(self) -> EHField:
         """Returns the field data for side 1.
 
         Returns:
             Field: The field data for side 1.
         """
-        return Field(
-            E=self.E1, H=self.H1, creator=self.name, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs
-        )
+        return EHField(_E=self.E1, _H=self.H1, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs,
+                       freq=self.frequency, aux={"creator": self.name})
 
     @property
-    def side2(self) -> Field:
+    def side2(self) -> EHField:
         """Returns the field data for side 2.
 
         Returns:
             Field: The field data for side 2.
         """
-        return Field(
-            E=self.E2, H=self.H2, creator=self.name, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs
-        )
+        return EHField(_E=self.E2, _H=self.H2, x=self.mesh.g.xs, y=self.mesh.g.ys, z=self.mesh.g.zs,
+                       freq=self.frequency, aux={"creator": self.name}) 
 
     def intersects(self, x0, y0, z0, x2, y2, z2):
         raise NotImplementedError
@@ -540,7 +550,7 @@ class Surface:
         mesh.align_from_origin(origin[0], origin[1], origin[2])
         mesh.set_triangles(triangles)
         surface = Surface(mesh, FRES_AIR, 2, "ImportedSurface")
-        surface.write_field(2, Field(E=np.array(E), H=np.array(H)), k0)
+        surface.write_field(2, E=np.array(E), H=np.array(H), k0=k0)
         return surface
 
 class OrientableSurface(Surface):
@@ -580,7 +590,7 @@ class Sphere(OrientableSurface):
 
 def sc_expose_surface(
     source: Surface, target: Surface, side: int = -1
-) -> Field:
+) -> EHField:
     """Expose the surface fields from the source to the target.
 
     Args:
@@ -653,13 +663,14 @@ def sc_expose_surface(
             source.k0,
             pgb,
         )
-    fr1 = Field(E=Eout1, H=Hout1, x=cout[0,:], y=cout[1,:], z=cout[2,:])
-    fr2 = Field(E=Eout2, H=Hout2, x=cout[0,:], y=cout[1,:], z=cout[2,:])
+    freq = source.k0 / (2 * np.pi * 299792458)
+    fr1 = EHField(_E = Eout1, _H = Hout1, x=cout[0,:], y=cout[1,:], z=cout[2,:], freq=freq)
+    fr2 = EHField(_E = Eout2, _H = Hout2, x=cout[0,:], y=cout[1,:], z=cout[2,:], freq=freq)
     return fr1, fr2
 
 
 
-def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, side: int = -1) -> Field:
+def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, side: int = -1) -> EHField:
     """Expose the surface fields at specific Cartesian coordinates.
 
     Args:
@@ -720,10 +731,11 @@ def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
             source.k0,
             pgb,
         )
-    return Field(E=Eout, H=Hout, x=x, y=y, z=z)
+    return EHField(_E=Eout, _H=Hout, x=x, y=y, z=z, freq=source.k0 / (2 * np.pi * 299792458))
 
 
-def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side: int):
+
+def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side: int) -> EHFieldFF:
     """Expose the surface fields at specific spherical coordinates.
 
     Args:
@@ -784,4 +796,4 @@ def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side
             np.float64(source.k0),
             pgb,
         )
-    return Field(E=Eout, H=Hout, theta=theta, phi=phi)
+    return EHFieldFF(_E=Eout, _H=Hout, theta=theta, phi=phi, Ptot=0)

@@ -17,7 +17,7 @@
 from ..geo.cs import CoordinateSystem, GCS
 import numpy as np
 from .patterns import dipole_pattern_ff, dipole_pattern_nf
-from ..field import Field
+from emsutil.emdata import EHField, EHFieldFF
 from ..surface import Surface
 from ..samplespace import FarFieldSpace
 from .compiled_functions import _c_cross_comp, _c_dot_comp
@@ -118,7 +118,7 @@ class AntennaArray:
                 a.x, a.y, a.z = xyz
             logger.debug('Restored xyz coordinates')
 
-    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> Field:
+    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> EHFieldFF:
         """Exposes a set of far field theta/phi coordinates
 
         X: theta=90, phi=0
@@ -140,12 +140,12 @@ class AntennaArray:
             for ant in self.antennas:
                 p.update(task1, advance=1)
                 fr = ant.expose_thetaphi(gtheta, gphi)
-                E += fr.E
-                H += fr.H
+                E += fr._E
+                H += fr._H
         logger.debug("Field Computation Complete")
-        return Field(E=E, H=H, theta=gtheta, phi=gphi)
+        return EHFieldFF(_E=E, _H=H, theta=gtheta, phi=gphi, Ptot=self.power)
 
-    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray) -> Field:
+    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray) -> EHField:
         """Exposes a set of XYZ coordinates defined in the global space.
 
         Args:
@@ -164,17 +164,17 @@ class AntennaArray:
             for ant in self.antennas:
                 p.update(task1, advance=1)
                 fr = ant.expose_xyz(gx, gy, gz)
-                E += fr.E
-                H += fr.H
+                E += fr._E
+                H += fr._H
             logger.debug("Field Computation Complete")
-        return Field(E=E, H=H, x=gx, y=gy, z=gz)
+        return EHField(_E=E, _H=H, x=gx, y=gy, z=gz, Ex=E[0,:], freq=self.frequency)
 
-    def expose_surface(self, surface: Surface, add_field: bool = True) -> Field:
+    def expose_surface(self, surface: Surface, add_field: bool = True) -> EHField:
         """Exposes a Surface
 
         Args:
             surface (Surface): The surface to expose
-            add_field (bool, optional): If the field shoeld be added. If false its overwritten. Defaults to True.
+            add_field (bool, optional): If the field should be added. If false its overwritten. Defaults to True.
 
         Returns:
             Field: Returns the computed field.
@@ -283,16 +283,17 @@ class AntennaArray:
                 H2[0,:] += Hrefx*other + Htransx*same
                 H2[1,:] += Hrefy*other + Htransy*same
                 H2[2,:] += Hrefz*other + Htransz*same
-            
-        fr1 = Field(E=E1, H=H1, x=xyz[0,:], y=xyz[1,:], z=xyz[2,:])
-        fr2 = Field(E=E2, H=H2, x=xyz[0,:], y=xyz[1,:], z=xyz[2,:])
+        
+        fr1 = EHField(_E=E1, _H=H1, x=gx, y=gy, z=gz, freq=self.frequency)
+        fr2 = EHField(_E=E2, _H=H2, x=gx, y=gy, z=gz, freq=self.frequency)
+        
         if add_field:
-            surface.add_field(1, fr1, self.k0)
-            surface.add_field(2, fr2, self.k0)
+            surface.add_field(1, E=E1, H=H1, k0=self.k0)
+            surface.add_field(2, E=E2, H=H2, k0=self.k0)
 
         return fr1, fr2
     
-    def expose_ff(self, target: FarFieldSpace) -> Field:
+    def expose_ff(self, target: FarFieldSpace) -> EHFieldFF:
         """Exposes a FarFieldSpace object
 
         Args:

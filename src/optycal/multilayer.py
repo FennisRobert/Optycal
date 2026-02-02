@@ -21,6 +21,8 @@ import numpy as np
 from numba import c16, njit
 from .util import check
 from abc import ABC
+from .material import PEC as MAT_PEC
+from .material import AIR as MAT_AIR
 
 @njit(c16[:,:](c16[:,:], c16[:,:]), cache=True, nogil=True)
 def mat_mul(A, B):
@@ -45,7 +47,18 @@ def matmultiply(A, B):
 class SurfaceRT(ABC):
     pass
 
-
+    @property
+    def thickness(self) -> float:
+        return 0.0
+    
+    @property
+    def mat1(self) -> Material:
+        return None
+    
+    @property
+    def mat2(self) -> Material:
+        return None
+    
 def StoT(S: np.ndarray) -> np.ndarray:
     tiny = 1e-15
     T = np.zeros_like(S)
@@ -80,10 +93,10 @@ class MultiLayer(SurfaceRT):
             ds (List[float]): The list of thicknesses for each layer
             nangles (int, optional): The number of angles to sample. Defaults to 100.
         """
-        self.materials = materials
-        self.ds = ds
-        self.k0 = k0
-        self.freq = k0 / (2 * np.pi) * 299792458
+        self.materials: list[Material] = materials
+        self.ds: list[float] = ds
+        self.k0: float = k0
+        self.freq: float = k0 / (2 * np.pi) * 299792458
 
         angs = np.linspace(0, np.pi / 2, nangles)
         self.angles = angs
@@ -96,6 +109,19 @@ class MultiLayer(SurfaceRT):
             self.Ttm,
         ) = self._compute_coefficients(angs)
 
+    @property
+    def mat1(self) -> Material:
+        return self.materials[0]
+    
+    @property
+    def mat2(self) -> Material:
+        return self.materials[-1]
+    
+    
+    @property
+    def thickness(self) -> float:
+        return sum(self.ds)
+    
     @property
     def color(self) -> str:
         return self.materials[0].color
@@ -221,6 +247,14 @@ class PEC(SurfaceRT):
         data[6, :] = self.Ttm
         return data
 
+    @property
+    def mat1(self) -> Material:
+        return MAT_PEC
+    
+    property
+    def mat2(self) -> Material:
+        return MAT_PEC
+    
 class AIR(SurfaceRT):
     def __init__(self, nangles: int = 1000):
         self.angles = np.linspace(0, np.pi / 2, nangles)
@@ -245,6 +279,13 @@ class AIR(SurfaceRT):
         data[6, :] = self.Ttm
         return data
 
-
+    @property
+    def mat1(self) -> Material:
+        return MAT_AIR
+    
+    property
+    def mat2(self) -> Material:
+        return MAT_AIR
+    
 FRES_AIR = AIR()
 FRES_PEC = PEC()

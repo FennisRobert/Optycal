@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 import numpy as np
-from .field import Field
+from emsutil.emdata import EHField, EHFieldFF
 from typing import Literal
 
 
@@ -28,16 +28,16 @@ class FarFieldSpace:
     def __str__(self) -> str:
         return f'FarFieldSpace[{self.theta.shape}]'
     
-    def catch(self, field: Field, k0: float):
+    def catch(self, field: EHFieldFF, k0: float):
         self.field = field
 
 
 class FF1D(FarFieldSpace):
     
     def __init__(self, theta: np.ndarray, phi: np.ndarray):
-        self.theta = theta
-        self.phi = phi
-        self.field = None
+        self.theta: np.ndarray = theta
+        self.phi: np.ndarray = phi
+        self.field: EHFieldFF = None
     
     @staticmethod
     def aziele(dangle: float = 1, phirange = (-180, 180), degree: bool = True, phi0: float=0.0) -> tuple[FF1D, FF1D]:
@@ -65,12 +65,12 @@ class FF1D(FarFieldSpace):
 class FF2D(FarFieldSpace):
     
     def __init__(self, theta: np.ndarray, phi: np.ndarray):
-        self._theta = theta
-        self._phi = phi
+        self._theta: np.ndarray = theta
+        self._phi: np.ndarray = phi
         self.Theta, self.Phi = np.meshgrid(theta, phi)
-        self.theta = self.Theta.flatten()
-        self.phi = self.Phi.flatten()
-        self.field = None
+        self.theta: np.ndarray = self.Theta.flatten()
+        self.phi: np.ndarray = self.Phi.flatten()
+        self.field: EHFieldFF = None
     
     @staticmethod
     def sphere(dangle: float = 1, degree=True, sector: float = 1.0) -> FF2D:
@@ -184,32 +184,35 @@ class NearFieldSpace:
     def __str__(self) -> str:
         return f'NearFieldSpace[{self.x.shape}]'
     
-    def catch(self, field: Field, k0: float):
-        self.field = field
+    def catch(self, field: EHField, k0: float):
+        self.field: EHField = field
+        self.k0: float = k0
 
 
 class NF1D(NearFieldSpace):
     
     def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.field
+        self.x: np.ndarray = x
+        self.y: np.ndarray = y
+        self.z: np.ndarray = z
+        self.field: EHField = None
+        self.k0: float = None
 
 
 class NF2D(NearFieldSpace):
     
     def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.field
-
+        self.x: np.ndarray = x
+        self.y: np.ndarray = y
+        self.z: np.ndarray = z
+        self.field: EHField = None
+        self.k0: float = None
 
 class NF3D(NearFieldSpace):
     
     def __init__(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.field
+        self.x: np.ndarray = x
+        self.y: np.ndarray = y
+        self.z: np.ndarray = z
+        self.field: EHField = None
+        self.k0: float = None

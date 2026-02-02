@@ -128,12 +128,12 @@ surf.expose_ff(ffsph)
 
 # Set up 3D visualization:
 disp = opt.OptycalDisplay()
-
 # Show reflector surface with field distribution (e.g. |E| on surface).
-disp.add_surface_object(surf, field='normE')
+disp.add_surface_object(surf)#, field='normE')
+disp.add_boundary_field(surf.vertex_field(2).scalar('normE'))
 
 # Show antenna feed, color-coded by amplitude.
-disp.add_antenna_object(ant, color='amp')
+disp.add_antenna_object(ant)#, color='amp')
 
 # Add 3D far-field pattern:
 # - 'normE' magnitude

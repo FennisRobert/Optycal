@@ -323,6 +323,14 @@ class Mesh:
         newMesh.vertices[2,:] = newMesh.vertices[2,:] + dz
         return newMesh
 
+    def normal_displacement(self, dn: float) -> Mesh:
+        new_mesh = Mesh(self.vertices + dn*self.vertex_normals, self.cs, self.alignment_function)
+        new_mesh.set_triangles(self.triangles)
+        new_mesh._fill_complete()
+        new_mesh.normals
+        return new_mesh
+    
+        
     def align_from_origin(self, x0: float, y0: float, z0: float) -> None:
         """Aligns the mesh normals away from a given origin.
 

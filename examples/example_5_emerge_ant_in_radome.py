@@ -1,6 +1,6 @@
 import emerge as em
 import optycal as opt
-from emerge.plot import plot_sp, plot_ff_polar, plot_ff
+from emerge.plot import plot_ff_polar
 import numpy as np
 
 """This example demonstrates how to simulate an antenna element inside a radome environemnt
@@ -75,7 +75,7 @@ disc_surf = opt.Surface.import_model(*field.optycal_surface(disc))
 disc_surf.fresnel = opt.FRES_PEC
 
 # We create the radome surface materials
-laminate = opt.Material(er=3.5, tand=0.05, color="#c6c6c6")
+laminate = opt.Material(er=3.5, tand=0.05, color="#c5bea2", opacity=0.3)
 foam = opt.lib.FOAM_AIREX_C70
 # Next we create a stack for the radome based on a laminate and foam sandwich. 
 radome_material_stack = opt.MultiLayer(ant_surf.k0, [laminate, foam, laminate],[2*mm, 12*mm, 2*mm])
@@ -104,8 +104,7 @@ plot_ff_polar(ffele.theta, [ff_ele_ant.normE/em.lib.EISO, ff_ele_radome.normE/em
 
 # And a 3D plot
 disp = opt.OptycalDisplay()
-#disp.add_surface_object(ant_surf, field='Ez', quantity='real')
-disp.add_surface_object(radome_surf, field='normE', opacity=0.3)
+disp.add_surface_object(radome_surf)
 disp.add_surface_object(monopole_surf)
 disp.add_surface_object(disc_surf)
 disp.add_surf(*ff3d.surfplot('normE','abs', rmax=radome_R*0.6, offset=(0,0,radome_R*1.1)))
