@@ -15,3 +15,5 @@ dist/
 *_test.py
 
 _precision_definitions.txt
+
+.DS_STORE

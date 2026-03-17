@@ -1,3 +1,5 @@
+import os
+os.environ["NUMBA_NUM_THREADS"] = "20"
 import optycal as opt
 
 """Example 4: Parabolic Reflector with Patch Feed
@@ -130,7 +132,7 @@ surf.expose_ff(ffsph)
 disp = opt.OptycalDisplay()
 # Show reflector surface with field distribution (e.g. |E| on surface).
 disp.add_surface_object(surf)#, field='normE')
-disp.add_boundary_field(surf.vertex_field(2).scalar('normE'))
+disp.add_field(surf.vertex_field(2).scalar('normE'))
 
 # Show antenna feed, color-coded by amplitude.
 disp.add_antenna_object(ant)#, color='amp')

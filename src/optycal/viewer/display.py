@@ -179,7 +179,7 @@ class OptycalDisplay(EMergeDisplay):
 
         grid_no_nan = grid.threshold(scalars=name)
         
-        default_cmap = self.set
+        default_cmap = self.set.theme.default_amplitude_cmap
         # Determine color limits
         if clim is None:
             if self._cbar_lim is not None:
