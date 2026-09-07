@@ -69,8 +69,8 @@ array.expose_ff(sphere)
 
 # Plot normalized far-field cuts in dB:
 # Normalized by Eiso for directivity-type visualization.
-opt.plot_ff(azi.phi, azi.field.normE / opt.Eiso, dB=True)
-opt.plot_ff(ele.theta, ele.field.normE / opt.Eiso, dB=True)
+opt.plot_ff(azi.phi, azi.field.normE / opt.Eiso, dB=True, ylim=(-60, 30))
+opt.plot_ff(ele.theta, ele.field.normE / opt.Eiso, dB=True, ylim=(-60, 30))
 
 # Set up 3D Optycal display:
 display = opt.OptycalDisplay()

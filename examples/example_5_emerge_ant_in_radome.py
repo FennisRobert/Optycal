@@ -30,6 +30,12 @@ ant_R = 2*mm
 ground_R = 1.5 * wavelength  # Radius of ground plane
 radome_R = 3 * wavelength  # Radius of radome
 
+
+
+############################################################
+#                         PART1 FEM                        #
+############################################################
+
 ## First we start with the monopole
 
 sim = em.Simulation('Monopole')
@@ -47,8 +53,9 @@ sim.mw.bc.LumpedPort(feed.shell, 1, 2*em.lib.PI*ant_R, gap, em.ZAX)
 sim.mw.bc.AbsorbingBoundary(air.outside)
 
 sim.mesher.set_boundary_size(ant, ant_R)
-sim.mesher.set_boundary_size(air, wavelength/5)
+sim.mesher.set_face_size(air.outside, wavelength/8)
 sim.generate_mesh()
+
 sim.view(plot_mesh=True)
 
 data = sim.mw.run_sweep()
@@ -66,6 +73,12 @@ farfield = field.farfield_2d(em.ZAX, em.YAX, air.outside, (-90, 90))
 plot_ff_polar(farfield.ang, farfield.normE/em.lib.EISO)
 
 ## Now lets integrate it into an optycal simulation
+
+
+############################################################
+#                   PART2 PHYSICAL OPTICS                  #
+############################################################
+
 
 # We import the surface of the radiation into our Optycal simulation
 ant_surf = opt.Surface.import_model(*field.optycal_surface(air.outside))
@@ -98,9 +111,8 @@ ff_ele_radome = radome_surf.expose_ff(ffele, 1)
 field_radome = radome_surf.expose_ff(ff3d, 1)
 
 # Finally we plot the results
-plot_ff_polar(ffazi.phi, [ff_azi_ant.normE/em.lib.EISO, ff_azi_radome.normE/em.lib.EISO], labels=['Antenna only','With radome'])
-plot_ff_polar(ffele.theta, [ff_ele_ant.normE/em.lib.EISO, ff_ele_radome.normE/em.lib.EISO], labels=['Antenna only','With radome'])
-
+plot_ff_polar(ffazi.phi, [ff_azi_ant.gain.norm, ff_azi_radome.gain.norm], labels=['Antenna only','With radome'])
+plot_ff_polar(ffele.theta, [ff_ele_ant.gain.norm, ff_ele_radome.gain.norm], labels=['Antenna only','With radome'])
 
 # And a 3D plot
 disp = opt.OptycalDisplay()

@@ -17,18 +17,92 @@
 from __future__ import annotations
 from ..geo.cs import CoordinateSystem, GCS
 import numpy as np
-from .patterns import dipole_pattern_ff, dipole_pattern_nf
+import optycal_kernels
+from .patterns import (
+    dipole_pattern_ff, dipole_pattern_nf, half_dipole_pattern_ff, half_dipole_pattern_nf,
+    patch_pattern_ff, patch_pattern_nf,
+)
 from emsutil.emdata import EHField, EHFieldFF
+from emsutil.const import Z0
+
 from ..surface import Surface
 from ..samplespace import FarFieldSpace
 from .compiled_functions import _c_cross_comp, _c_dot_comp
 from ..multilayer import FRES_AIR
 from .interpolation_pattern import AntennaPattern
 from ..settings import GLOBAL_SETTINGS, Precision
-from functools import reduce
+from functools import reduce, lru_cache
 from loguru import logger
 from .compiled.antenna_single import expose_surface_single, expose_thetaphi_single, expose_xyz_single
 from typing import Callable
+
+# Angle grid used to auto-sample any custom (non-native) far-field pattern
+# function into the bicubic-spline interpolation data
+# `optycal_kernels.AntennaPattern.interpolated(...)` evaluates in Rust.
+# Physical spherical convention (theta in [0,pi], phi in [-pi,pi]) --
+# deliberately NOT the same [-pi/2,pi/2] theta convention
+# `InterpolatingAntenna.__init__` uses (see claude_nodes/antenna_migration.md
+# for why): that convention only works because `dipole_pattern_ff` happens to
+# remap theta internally, which isn't true of pattern functions in general.
+_CUSTOM_PATTERN_THETA_GRID = np.linspace(0, np.pi, 181, dtype=np.float32)
+_CUSTOM_PATTERN_PHI_GRID = np.linspace(-np.pi, np.pi, 361, dtype=np.float32)
+
+
+@lru_cache(maxsize=256)
+def _build_rust_pattern(nf_pattern: Callable, ff_pattern: Callable, k0: float) -> optycal_kernels.AntennaPattern:
+    """Maps an (nf_pattern, ff_pattern) callable pair onto a Rust
+    `AntennaPattern`: the native, exact `Dipole`/`HalfDipole` variants for
+    the two patterns that have one, or -- for anything else, including
+    parametrized patterns from `generate_gaussian_pattern`/
+    `generate_patch_pattern`/`generate_triang_pattern` and arbitrary
+    user-defined callables -- a bicubic-spline gridded-interpolation
+    approximation built by sampling `ff_pattern` once here in Python
+    (reusing the existing, unchanged `AntennaPattern.from_function`/
+    `compute_interpolator_matrix` machinery) and handing the coefficient
+    grid to Rust for fast evaluation.
+
+    Matches `InterpolatingAntenna`'s existing, already-accepted behavior:
+    the near field of a non-native pattern is evaluated as the far-field
+    pattern shape times the standard `amplitude*exp(-ikR)/R` radial
+    falloff, ignoring any genuine `r`-dependence `nf_pattern` might define
+    (only `dipole`/`half_dipole` keep their exact reactive near-field
+    terms). See `claude_nodes/antenna_migration.md`.
+
+    `@lru_cache`d on `(nf_pattern, ff_pattern, k0)` identity/value --
+    critical for `AntennaArray`, which builds one `Antenna` per element
+    (e.g. 200 for a 20x10 array) that all share the exact same pattern
+    functions and k0: without this cache, every element would redundantly
+    rebuild the same 181x361-grid bicubic spline (a handful of dense
+    `np.linalg.solve` calls per grid row/column, times 6 field components)
+    from scratch, which is slow enough to make array construction look
+    like a hang. `AntennaPattern` is stateless/read-only once built, so
+    sharing the same instance across antennas is safe. Only pushes work
+    away, never staleness: `Antenna.frequency` reassignment after
+    construction already doesn't rebuild the pattern regardless of this
+    cache (see this function's caller).
+    """
+    if nf_pattern is dipole_pattern_nf and ff_pattern is dipole_pattern_ff:
+        return optycal_kernels.AntennaPattern.dipole()
+    if nf_pattern is half_dipole_pattern_nf and ff_pattern is half_dipole_pattern_ff:
+        return optycal_kernels.AntennaPattern.half_dipole()
+    if nf_pattern is patch_pattern_nf and ff_pattern is patch_pattern_ff:
+        return optycal_kernels.AntennaPattern.patch(np.pi, np.pi, 0.5)
+    # generate_patch_pattern(...) returns fresh closures each call, so they
+    # can't be identity-matched like the plain patterns above -- it tags
+    # its own closures with `_optycal_patch_params` instead (see
+    # patterns.py) for this to detect.
+    patch_params = getattr(ff_pattern, '_optycal_patch_params', None)
+    if patch_params is not None:
+        kw, kl, t_exp = patch_params
+        return optycal_kernels.AntennaPattern.patch(kw, kl, t_exp)
+
+    pattern = AntennaPattern.from_function(
+        ff_pattern, _CUSTOM_PATTERN_THETA_GRID, _CUSTOM_PATTERN_PHI_GRID, k0
+    )
+    full_matrix = pattern.full_matrix(Precision.DOUBLE)
+    return optycal_kernels.AntennaPattern.interpolated(
+        _CUSTOM_PATTERN_THETA_GRID, _CUSTOM_PATTERN_PHI_GRID, full_matrix
+    )
 
 class Antenna:
     
@@ -65,6 +139,15 @@ class Antenna:
             self.nf_pattern: Callable = dipole_pattern_nf
         else:
             self.nf_pattern: Callable = nf_pattern
+
+        # Rust-backed pattern evaluation for expose_xyz/expose_thetaphi --
+        # built once here (like InterpolatingAntenna's interp_pattern is),
+        # so it goes stale the same pre-existing way if `.frequency` is
+        # reassigned after construction. See _build_rust_pattern's docstring
+        # and claude_nodes/antenna_migration.md.
+        self._rust_pattern: optycal_kernels.AntennaPattern = _build_rust_pattern(
+            self.nf_pattern, self.ff_pattern, self.k0
+        )
 
     @property
     def cs(self):
@@ -199,39 +282,21 @@ class Antenna:
         """
         Compute the nearfield of the antenna at the points (gx, gy, gz)
         """
-        sx, sy, sz = self.gxyz
+        basis = np.ascontiguousarray(self.cs.global_basis, dtype=np.float64)
+        basis_inv = np.ascontiguousarray(self.cs.global_basis_inv, dtype=np.float64)
+        E, H = optycal_kernels.antenna_expose_xyz(
+            np.ascontiguousarray(gx, dtype=np.float64),
+            np.ascontiguousarray(gy, dtype=np.float64),
+            np.ascontiguousarray(gz, dtype=np.float64),
+            list(self.gxyz),
+            basis,
+            basis_inv,
+            self._rust_pattern,
+            complex(self.amplitude),
+            self.k0,
+        )
 
-        dx = gx - sx
-        dy = gy - sy
-        dz = gz - sz
-
-        E = np.zeros((3, gx.shape[0]), dtype=np.complex128)
-        H = np.zeros((3, gx.shape[0]), dtype=np.complex128)
-        
-        R = np.sqrt(dx**2 + dy**2 + dz**2)
-        kx = dx/R
-        ky = dy/R
-        kz = dz/R
-        
-        lkx, lky, lkz = self.cs.from_global_basis(kx, ky, kz)
-        thetac = np.arccos(lkz)
-        phic = np.arctan2(lky, lkx)
-        
-        B = self.amplitude * np.exp(-1j * self.k0 * R) / R
-
-        [ex, ey, ez, hx, hy, hz] = self.nf_pattern(thetac, phic, R, self.k0)
-
-        ex, ey, ez = self.cs.in_global_basis(ex, ey, ez)
-        hx, hy, hz = self.cs.in_global_basis(hx, hy, hz)
-        
-        E[0,:] = ex*B
-        E[1,:] = ey*B
-        E[2,:] = ez*B
-        H[0,:] = hx*B
-        H[1,:] = hy*B
-        H[2,:] = hz*B
-        
-        return EHField(_E=E, _H=H, x=gx, y=gy, z=gz, freq=self.frequency, aux={'creator': self.name})
+        return EHField(_E=np.asarray(E), _H=np.asarray(H), x=gx, y=gy, z=gz, freq=self.frequency, aux={'creator': self.name})
     
 
     def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray) -> EHFieldFF:
@@ -240,28 +305,19 @@ class Antenna:
         """
         gtheta = gtheta.astype(np.float32)
         gphi = gphi.astype(np.float32)
-        theta_local, phi_local = self.cs.ae_from_global_cs(gtheta, gphi)
-        cst = np.cos(theta_local)
-        csp = np.cos(phi_local)
-        snt = np.sin(theta_local)
-        snp = np.sin(phi_local)
-        kxh = snt * csp
-        kyh = snt * snp
-        kzh = cst
-        
-        theta_local = np.arccos(kzh)
-        phi_local = np.arctan2(kyh, kxh)
-        x0, y0, z0 = [0,0,0]
-        kx, ky, kz = self.k0*kxh, self.k0*kyh, self.k0*kzh
-        gx, gy, gz = self.local_xyz
-        B = self.amplitude * np.exp(1j * (kx * gx + ky * gy + kz * gz))
-        [ex, ey, ez, hx, hy, hz] = self.ff_pattern(theta_local, phi_local, self.k0)
-        E1 = np.array(self.cs.in_global_basis(ex, ey, ez))
-        H1 = np.array(self.cs.in_global_basis(hx, hy, hz))
-
-        E = B * E1
-        H = B * H1
-        return EHFieldFF(_E=E, _H=H, theta=gtheta, phi=gphi, Ptot=self.power)
+        basis = np.ascontiguousarray(self.cs.global_basis, dtype=np.float64)
+        basis_inv = np.ascontiguousarray(self.cs.global_basis_inv, dtype=np.float64)
+        E, H = optycal_kernels.antenna_expose_thetaphi(
+            np.ascontiguousarray(gtheta, dtype=np.float32),
+            np.ascontiguousarray(gphi, dtype=np.float32),
+            list(self.local_xyz),
+            basis,
+            basis_inv,
+            self._rust_pattern,
+            complex(self.amplitude),
+            self.k0,
+        )
+        return EHFieldFF(_E=np.asarray(E), _H=np.asarray(H), theta=gtheta, phi=gphi, Ptot=self.power)
     
 
     def expose_kxyz(self, kx: np.ndarray, ky: np.ndarray, kz: np.ndarray) -> EHFieldFF:
@@ -412,6 +468,49 @@ class Antenna:
         fr = self.expose_thetaphi(target.theta, target.phi)
         target.field = fr
         return fr
+    
+    def receive_from(self, other: Antenna | Surface) -> complex:
+        """Compute the complex received signal/voltage from another Antenna or Surface.
+
+        Uses Lorentz Reciprocity (Reaction Concept) to couple incoming fields 
+        with this antenna's receiving response and complex array excitation.
+
+        Args:
+            other (Antenna | Surface): Source of the incoming EM field.
+
+        Returns:
+            complex: The complex received signal value.
+        """
+    
+        # 1. Compute the incident field generated by 'other' at this antenna's position
+        gx = np.array([self.gx], dtype=np.float32)
+        gy = np.array([self.gy], dtype=np.float32)
+        gz = np.array([self.gz], dtype=np.float32)
+        
+        field = other.expose_xyz(gx, gy, gz)
+        E_inc = field.E[:, 0]  # Global complex (Ex, Ey, Ez) at self position
+
+        # 2. Vector pointing from self towards 'other'
+        d_global = np.array(other.gxyz) - np.array(self.gxyz)
+        dist = np.linalg.norm(d_global)
+        
+        if dist == 0:
+            return 0.0 + 0.0j
+            
+        k_global = d_global / dist  # Unit arrival direction vector
+
+        # 3. Convert arrival direction to self's local coordinate system
+        lkx, lky, lkz = self.cs.from_global_basis(k_global[0], k_global[1], k_global[2])
+        theta_local = np.arccos(np.clip(lkz, -1.0, 1.0))
+        phi_local = np.arctan2(lky, lkx)
+
+        # 4. Evaluate self's farfield radiation/reception pattern in that arrival direction
+        [ex, ey, ez, _, _, _] = self.ff_pattern(theta_local, phi_local, self.k0)
+        E_pat_global = np.array(self.cs.in_global_basis(ex, ey, ez)).flatten()
+
+        # 5. Reciprocal coupling (E_inc . E_pat) scaled by element amplitude/phase weighting
+        received_signal = np.dot(E_inc, E_pat_global) * self.amplitude
+        return complex(received_signal)
     
     def reset_aux(self):
         """Resets any auxilliary scan coefficients.

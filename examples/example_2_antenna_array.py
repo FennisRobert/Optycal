@@ -1,5 +1,6 @@
+print('running?')
 import optycal as opt
-
+print('imported?')
 """Example 2: 2D Patch Array with Tapering
 
 In this example we simulate a 2D patch antenna array using Optycal.
@@ -66,8 +67,8 @@ array.expose_ff(sphere)
 # Plot normalized far-field cuts in dB:
 # - Normalize to isotropic reference Eiso for directivity-like patterns.
 # - azi.phi / ele.theta give angular axes, .field.normE contains |E|.
-opt.plot_ff(azi.phi, azi.field.normE / opt.Eiso, dB=True)
-opt.plot_ff(ele.theta, ele.field.normE / opt.Eiso, dB=True)
+opt.plot_ff(azi.phi, azi.field.normE / opt.Eiso, dB=True, ylim=(-40, 30))
+opt.plot_ff(ele.theta, ele.field.normE / opt.Eiso, dB=True, ylim=(-40, 30))
 
 # Create a 3D display for the radiation pattern.
 display = opt.OptycalDisplay()

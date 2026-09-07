@@ -22,7 +22,7 @@ from typing import Literal
 from ..geo.mesh import Mesh
 from ..surface import Surface
 from emsutil.pyvista import EMergeDisplay, cmap_names, setdefault, _AnimObject
-
+from emsutil.themes import EMV3
 from ..antennas.antenna import Antenna
 from ..antennas.array import AntennaArray
 
@@ -34,6 +34,7 @@ class OptycalDisplay(EMergeDisplay):
     def __post_init__(self):
         self._selector._set_encoder_function(_do_nothing)
         self._edge_length = 1.0
+        self.set_theme(EMV3)
         
     def _get_edge_length(self):
         return self._edge_length
@@ -78,6 +79,11 @@ class OptycalDisplay(EMergeDisplay):
             pv.UnstructuredGrid: The added surface object.
         """
         
+        name = self._get_fieldname()
+        
+        # Overwrite the color bar Title if no title exists
+        self._cbar_defaults(title=name)
+
         surf1, surf2 = surf._get_side_surfs()
         g1 = self._ug_from_mesh(surf1.mesh)
         f1 = surf1.fresnel.mat1
@@ -103,13 +109,15 @@ class OptycalDisplay(EMergeDisplay):
             antenna (Antenna): The antenna to add.
             color (Literal['none','amp','phase'], optional): The color of the antenna. Defaults to 'amp'.
         """
+        name = self._get_fieldname()
+
         x, y, z = antenna.gxyz
         pc = np.array([x,y,z])
         pol = antenna.cs.gzhat
         length = 0.5* 299792458/antenna.frequency
-        ant = pv.Arrow(pc-pol*length/2,pol, scale=length)
+        ant = pv.Arrow(start=pc-pol*length/2,direction=pol, scale=length)
         
-        self._plot.add_mesh(ant, scalars=abs(antenna.amplitude)*np.ones((ant.n_cells,)))
+        self._plot.add_mesh(ant, scalars=abs(antenna.amplitude)*np.ones((ant.n_cells,)), show_scalar_bar=False)
 
     def add_array_object(self, array: AntennaArray, color: Literal['none','amp','phase'] = 'amp'):
         for ant in array.antennas:
@@ -156,7 +164,14 @@ class OptycalDisplay(EMergeDisplay):
         
         (¹): lin: f(x)=x, log: f(x)=log₁₀(|x|), symlog: f(x)=sgn(x)·log₁₀(1+|x·ln(10)|)
         """
-        
+        if _fieldname is None:
+            name = self._get_fieldname()
+        else:
+            name = _fieldname
+
+        # Overwrite the color bar Title if no title exists
+        self._cbar_defaults(title=name)
+
         grid = pv.StructuredGrid(x,y,z)
         field_flat = field.flatten(order='F')
         
@@ -169,10 +184,7 @@ class OptycalDisplay(EMergeDisplay):
         
         static_field = T(np.real(field_flat))
         
-        if _fieldname is None:
-            name = 'anim'+str(self._ctr)
-        else:
-            name = _fieldname
+        
         self._ctr += 1
         
         grid[name] = static_field
@@ -180,6 +192,7 @@ class OptycalDisplay(EMergeDisplay):
         grid_no_nan = grid.threshold(scalars=name)
         
         default_cmap = self.set.theme.default_amplitude_cmap
+        
         # Determine color limits
         if clim is None:
             if self._cbar_lim is not None:

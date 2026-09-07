@@ -1,2 +1,1 @@
-from .strattonchu import stratton_chu_xyz, stratton_chu_xyz_surface
-from .strattonchuff import stratton_chu_ff
+from .strattonchu import stratton_chu_xyz_surface

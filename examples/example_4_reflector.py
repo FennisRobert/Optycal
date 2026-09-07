@@ -1,5 +1,3 @@
-import os
-os.environ["NUMBA_NUM_THREADS"] = "20"
 import optycal as opt
 
 """Example 4: Parabolic Reflector with Patch Feed
@@ -23,7 +21,7 @@ c0 = 299792458
 wl = c0 / f0
 
 # Sampling / element spacing along the reflector profile
-ds = wl * 0.3
+ds = wl * 0.2
 
 # Paraboloid geometry parameters [m]
 radius = 0.6          # Aperture radius
@@ -126,8 +124,14 @@ opt.plot_ff(
 ffsph = opt.FF2D.sphere(0.5, sector=0.5)
 
 # Compute 2D far-field from reflector surface:
+from time import time
+t0 = time()
 surf.expose_ff(ffsph)
-
+t1 = time()
+T = t1-t0
+npts = ffsph.theta.shape[0] * surf.mesh.nedges * 1e-6
+print(f'Elapsed Time         = {T:.2f} seconds')
+print(f'Total performance    = {npts/T:.2f}')
 # Set up 3D visualization:
 disp = opt.OptycalDisplay()
 # Show reflector surface with field distribution (e.g. |E| on surface).
@@ -135,7 +139,7 @@ disp.add_surface_object(surf)#, field='normE')
 disp.add_field(surf.vertex_field(2).scalar('normE'))
 
 # Show antenna feed, color-coded by amplitude.
-disp.add_antenna_object(ant)#, color='amp')
+disp.add_antenna_object(ant)
 
 # Add 3D far-field pattern:
 # - 'normE' magnitude

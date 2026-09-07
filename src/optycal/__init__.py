@@ -2,13 +2,15 @@ from loguru import logger
 import sys
 
 logger.remove()
-logger.add(sys.stderr, level="WARNING")
+logger.add(sys.stderr, level="INFO")
 
 from .antennas.antenna import Antenna, EMergeAntenna
+from .antennas.antenna_model import AntennaModel
 from .antennas.array import AntennaArray, taper
 from .antennas.patterns import Eiso, Eomni, dipole_pattern_ff, dipole_pattern_nf, half_dipole_pattern_ff, half_dipole_pattern_nf, patch_pattern_nf, patch_pattern_ff, generate_gaussian_pattern, generate_gaussian_pattern_z, generate_patch_pattern, generate_triang_pattern
 from .geo.cs import CoordinateSystem, GCS
 from .settings import Settings, GLOBAL_SETTINGS
+from optycal_kernels import KernelConfig
 from .samplespace import FF1D, FF2D, FarFieldSpace, NearFieldSpace
 from .geo.mesh import Mesh
 from .geo.mesh.generators import generate_circle, generate_rectangle, generate_sphere

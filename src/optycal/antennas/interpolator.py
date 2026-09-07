@@ -8,7 +8,7 @@ class intmode(Enum):
     ParabolicRunout = 1
     CubicRunout = 2
 
-@njit(f4[:](f4[:], f4[:], i8), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def _diff_f4(x, y, mode):
     N = len(x)
     Bs = 6*(y[:-2] - 2*y[1:-1] + y[2:])
@@ -49,7 +49,7 @@ def _diff_f4(x, y, mode):
     dys[-1] = 3*ais[-1] + 2*bis[-1] + cis[-1]
     return dys
 
-@njit(f8[:](f4[:], f8[:], i8), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def _diff_f8(x,y, mode):
     N = len(x)
     Bs = 6*(y[:-2] - 2*y[1:-1] + y[2:])
@@ -90,7 +90,7 @@ def _diff_f8(x,y, mode):
     dys[-1] = 3*ais[-1] + 2*bis[-1] + cis[-1]
     return dys
 
-@njit(c8[:](f4[:], c8[:], i8), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def _diff_c8(x,y, mode):
     N = len(x)
     Bs = 6*(y[:-2] - 2*y[1:-1] + y[2:])
@@ -131,7 +131,7 @@ def _diff_c8(x,y, mode):
     dys[-1] = 3*ais[-1] + 2*bis[-1] + cis[-1]
     return dys
 
-@njit(c16[:](f4[:], c16[:], i8), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def _diff_c16(x,y, mode):
     N = len(x)
     Bs = 6*(y[:-2] - 2*y[1:-1] + y[2:])
@@ -172,7 +172,7 @@ def _diff_c16(x,y, mode):
     dys[-1] = 3*ais[-1] + 2*bis[-1] + cis[-1]
     return dys
 
-@njit(f4[:, :, :, :](f4[:], f4[:], f4[:, :], i8), cache=True, fastmath=True, nogil=True, parallel=True)
+@njit(cache=True, fastmath=True, nogil=True, parallel=True)
 def _int_mat_f4(x_ax, y_ax, zs, mode):
     Nx = len(x_ax)
     Ny = len(y_ax)
@@ -202,7 +202,7 @@ def _int_mat_f4(x_ax, y_ax, zs, mode):
     
     return a_coeffs
 
-@njit(f8[:, :, :, :](f4[:], f4[:], f8[:, :], i8), cache=True, fastmath=True, nogil=True, parallel=True)
+@njit(cache=True, fastmath=True, nogil=True, parallel=True)
 def _int_mat_f8(x_ax, y_ax, zs, mode):
     Nx = len(x_ax)
     Ny = len(y_ax)
@@ -232,7 +232,7 @@ def _int_mat_f8(x_ax, y_ax, zs, mode):
     
     return a_coeffs
 
-@njit(c8[:, :, :, :](f4[:], f4[:], c8[:, :], i8), cache=True, fastmath=True, nogil=True, parallel=True)
+@njit(cache=True, fastmath=True, nogil=True, parallel=True)
 def _int_mat_c8(x_ax, y_ax, zs, mode):
     Nx = len(x_ax)
     Ny = len(y_ax)
@@ -262,7 +262,7 @@ def _int_mat_c8(x_ax, y_ax, zs, mode):
     
     return a_coeffs
 
-@njit(c16[:, :, :, :](f4[:], f4[:], c16[:, :], i8), cache=True, fastmath=True, nogil=True, parallel=True)
+@njit(cache=True, fastmath=True, nogil=True, parallel=True)
 def _int_mat_c16(x_ax, y_ax, zs, mode):
     Nx = len(x_ax)
     Ny = len(y_ax)
@@ -308,7 +308,7 @@ def compute_interpolator_matrix(x_ax, y_ax, zs, mode: intmode = intmode.CubicRun
         raise ValueError("Invalid dtype for zs")    
     
 
-@njit(f4[:](f4[:], f4[:], f4[:], f4[:], f4[:,:,:,:]), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def c_interpolator_f4(x, y, xgrid, ygrid, interp_matrix):
     Nx = len(xgrid)
     Ny = len(ygrid)
@@ -345,7 +345,7 @@ def c_interpolator_f4(x, y, xgrid, ygrid, interp_matrix):
         out[ix] = M1 + M2*xi + M3*xsq + M4*xqb
     return out
 
-@njit(f8[:](f4[:], f4[:], f4[:], f4[:], f8[:,:,:,:]), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def c_interpolator_f8(x, y, xgrid, ygrid, interp_matrix):
     Nx = len(xgrid)
     Ny = len(ygrid)
@@ -382,7 +382,7 @@ def c_interpolator_f8(x, y, xgrid, ygrid, interp_matrix):
         out[ix] = M1 + M2*xi + M3*xsq + M4*xqb
     return out
 
-@njit(c8[:](f4[:], f4[:], f4[:], f4[:], c8[:,:,:,:]), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def c_interpolator_c8(x, y, xgrid, ygrid, interp_matrix):
     Nx = len(xgrid)
     Ny = len(ygrid)
@@ -419,7 +419,7 @@ def c_interpolator_c8(x, y, xgrid, ygrid, interp_matrix):
         out[ix] = M1 + M2*xi + M3*xsq + M4*xqb
     return out
 
-@njit(c16[:](f4[:], f4[:], f4[:], f4[:], c16[:,:,:,:]), cache=True, fastmath=True, nogil=True)
+@njit(cache=True, fastmath=True, nogil=True)
 def c_interpolator_c16(x, y, xgrid, ygrid, interp_matrix):
     Nx = len(xgrid)
     Ny = len(ygrid)

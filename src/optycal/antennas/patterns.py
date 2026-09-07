@@ -510,5 +510,12 @@ def generate_patch_pattern(Width: float, Length: float, k0: float) -> tuple[Call
 
         return ex, ey, ez, hx, hy, hz
 
-    
+    # Lets Antenna._build_rust_pattern (antennas/antenna.py) recognize this
+    # as a native Rust pattern (optycal_kernels.AntennaPattern.patch)
+    # instead of falling back to gridded interpolation -- these closures
+    # are fresh objects every call, so identity comparison (as used for the
+    # plain, non-parametrized patch_pattern_ff/_nf) can't detect them.
+    _patch_pattern._optycal_patch_params = (kW, kL, 0.02)
+    _patch_pattern_ff._optycal_patch_params = (kW, kL, 0.02)
+
     return _patch_pattern, _patch_pattern_ff

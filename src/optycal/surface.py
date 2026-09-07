@@ -20,12 +20,14 @@ from typing import Callable, Tuple, Union
 
 import numpy as np
 
-from .solvers import stratton_chu_xyz_surface, stratton_chu_ff, stratton_chu_xyz
+import optycal_kernels
+from optycal_kernels import KernelConfig
+from .solvers import stratton_chu_xyz_surface
 from .samplespace import FarFieldSpace
 from .geo import Mesh, CoordinateSystem
 from .geo.cs import GCS
 from .multilayer import SurfaceRT, FRES_AIR
-from emsutil.emdata import EHField, EHFieldFF
+from emsutil.emdata import EHField, EHFieldFF, DataStructure
 from .settings import GLOBAL_SETTINGS
 from numba_progress import ProgressBar
 from loguru import logger
@@ -250,7 +252,7 @@ class Surface:
 
         gv = self.mesh.g.vertices
         if self.polyorder == 1:
-            return EHField(_E=E, _H=H, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
+            return EHField(_E=E, _H=H, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, structure=DataStructure.TRISURF, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
 
         if self.polyorder == 2:
             
@@ -260,7 +262,7 @@ class Surface:
                 ies = np.array(self.mesh.v2e[iv])
                 E2[:, iv] = E[:, ies].mean(axis=1)
                 H2[:, iv] = H[:, ies].mean(axis=1)
-            return EHField(_E=E2, _H=H2, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
+            return EHField(_E=E2, _H=H2, x=gv[0,:], y=gv[1,:], z=gv[2,:], freq=self.frequency, structure=DataStructure.TRISURF, aux={"creator": self.name, 'boundary': True, 'tris': self.mesh.triangles})
 
     def integration_fields(
         self,
@@ -302,7 +304,8 @@ class Surface:
             return (E1, H1, E2, H2)
         return None
 
-    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray, side=-1) -> EHField:
+    def expose_xyz(self, gx: np.ndarray, gy: np.ndarray, gz: np.ndarray, side=-1,
+                    kernel_config: KernelConfig | None = None) -> EHField:
         """Exposes the given xyz coordinates based on the E and H fields on the surface.
 
         Args:
@@ -310,24 +313,29 @@ class Surface:
             gy (np.ndarray): The y-coordinates to expose.
             gz (np.ndarray): The z-coordinates to expose.
             side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+            kernel_config (KernelConfig, optional): Tuning knobs for the Rust
+                Stratton-Chu kernel. Defaults to `GLOBAL_SETTINGS.kernel_config`.
 
         Returns:
             Field: The exposed field.
         """
-        return sc_expose_xyz(self, gx, gy, gz, side=side)
-    
-    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray, side=-1) -> EHField:
+        return sc_expose_xyz(self, gx, gy, gz, side=side, kernel_config=kernel_config)
+
+    def expose_thetaphi(self, gtheta: np.ndarray, gphi: np.ndarray, side=-1,
+                         kernel_config: KernelConfig | None = None) -> EHField:
         """Exposes the given theta and phi coordinates based on the E and H fields on the surface.
 
         Args:
             gtheta (np.ndarray): The theta coordinates to expose.
             gphi (np.ndarray): The phi coordinates to expose.
             side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+            kernel_config (KernelConfig, optional): Tuning knobs for the Rust
+                Stratton-Chu kernel. Defaults to `GLOBAL_SETTINGS.kernel_config`.
 
         Returns:
             Field: The exposed field.
         """
-        return sc_expose_thetaphi(self, gtheta, gphi, side=side)
+        return sc_expose_thetaphi(self, gtheta, gphi, side=side, kernel_config=kernel_config)
     
     def expose_surface(self, target: Surface, side=-1) -> EHField:
         """Exposes the surface fields based on the fields on the surface.
@@ -343,17 +351,20 @@ class Surface:
         target.add_field(1, fr1.E, fr1.H, self.k0)
         target.add_field(2, fr2.E, fr1.H, self.k0)
     
-    def expose_ff(self, target: FarFieldSpace, side=-1) -> EHField:
+    def expose_ff(self, target: FarFieldSpace, side=-1,
+                  kernel_config: KernelConfig | None = None) -> EHFieldFF:
         """Exposes the far-field data based on the fields on the surface.
 
         Args:
             target (FarFieldSpace): The target far-field space to expose.
             side (int, optional): The side of the surface (1 or 2). Defaults to -1.
+            kernel_config (KernelConfig, optional): Tuning knobs for the Rust
+                Stratton-Chu kernel. Defaults to `GLOBAL_SETTINGS.kernel_config`.
 
         Returns:
             Field: The exposed field.
         """
-        fr = sc_expose_thetaphi(self, target.theta, target.phi, side=side)
+        fr = sc_expose_thetaphi(self, target.theta, target.phi, side=side, kernel_config=kernel_config)
         target.field = fr
         return fr
         
@@ -527,9 +538,9 @@ class Surface:
     def import_model(
         vertices: np.ndarray,
         triangles: np.ndarray,
+        normals: np.ndarray,
         E: np.ndarray,
         H: np.ndarray,
-        origin: np.ndarray,
         k0: float,
         cs: CoordinateSystem = GCS) -> Surface:
         """Imports a surface model from the given parameters.
@@ -547,8 +558,8 @@ class Surface:
             Surface: The imported surface model.
         """
         mesh = Mesh(vertices, cs)
-        mesh.align_from_origin(origin[0], origin[1], origin[2])
         mesh.set_triangles(triangles)
+        mesh.normals = normals
         surface = Surface(mesh, FRES_AIR, 2, "ImportedSurface")
         surface.write_field(2, E=np.array(E), H=np.array(H), k0=k0)
         return surface
@@ -670,7 +681,8 @@ def sc_expose_surface(
 
 
 
-def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, side: int = -1) -> EHField:
+def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, side: int = -1,
+                   kernel_config: KernelConfig | None = None) -> EHField:
     """Expose the surface fields at specific Cartesian coordinates.
 
     Args:
@@ -679,6 +691,8 @@ def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
         y (np.ndarray): The y-coordinates to sample.
         z (np.ndarray): The z-coordinates to sample.
         side (int, optional): The side of the surface to sample from. Defaults to -1.
+        kernel_config (KernelConfig, optional): Tuning knobs for the Rust
+            Stratton-Chu kernel. Defaults to `GLOBAL_SETTINGS.kernel_config`.
 
     Returns:
         Field: The sampled electric and magnetic fields.
@@ -695,18 +709,16 @@ def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
     wns = np.zeros_like(vis).astype(np.float64)
     tri_normals = source.normals()
     tri_ids = source.trianglewise_indices()
-    
+
     for i in range(mesh.ntriangles):
         n = tri_normals[:,i]
         i1, i2, i3 = tri_ids[:,i]
         wns[:,i1] += n*areas[i]/3
         wns[:,i2] += n*areas[i]/3
         wns[:,i3] += n*areas[i]/3
-    
-    Eout = None
-    Hout = None
+
     cout = np.array([x,y,z]).astype(np.float64)
-    
+
     if side == 1:
         wns = -wns
         Ein = E1in
@@ -721,21 +733,22 @@ def sc_expose_xyz(source: Surface, x: np.ndarray, y: np.ndarray, z: np.ndarray, 
     Emag = np.sqrt(np.abs(Ein[0,:])**2 + np.abs(Ein[1,:])**2 + np.abs(Ein[2,:])**2)
     Ntot = np.argwhere(Emag>GLOBAL_SETTINGS.integration_limit*np.max(Emag)).shape[0]
     logger.debug(f'Percentage Included: {Ntot/Emag.shape[0]*100:.0f}%')
-    with ProgressBar(total=Ntot, ncols=100, dynamic_ncols=False) as pgb:
-        Eout, Hout = stratton_chu_xyz(
-            Ein.astype(np.complex128),
-            Hin.astype(np.complex128),
-            vis.astype(np.float64),
-            wns.astype(np.float64),
-            cout.astype(np.float64),
-            source.k0,
-            pgb,
-        )
-    return EHField(_E=Eout, _H=Hout, x=x, y=y, z=z, freq=source.k0 / (2 * np.pi * 299792458))
+    cfg = kernel_config if kernel_config is not None else GLOBAL_SETTINGS.kernel_config
+    Eout, Hout = optycal_kernels.stratton_chu_xyz(
+        Ein.astype(np.complex128),
+        Hin.astype(np.complex128),
+        vis.astype(np.float64),
+        wns.astype(np.float64),
+        cout.astype(np.float64),
+        source.k0,
+        cfg,
+    )
+    return EHField(_E=np.asarray(Eout), _H=np.asarray(Hout), x=x, y=y, z=z, freq=source.k0 / (2 * np.pi * 299792458))
 
 
 
-def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side: int) -> EHFieldFF:
+def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side: int,
+                        kernel_config: KernelConfig | None = None) -> EHFieldFF:
     """Expose the surface fields at specific spherical coordinates.
 
     Args:
@@ -743,6 +756,8 @@ def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side
         theta (np.ndarray): The polar angles to sample.
         phi (np.ndarray): The azimuthal angles to sample.
         side (int): The side of the surface to sample from.
+        kernel_config (KernelConfig, optional): Tuning knobs for the Rust
+            Stratton-Chu kernel. Defaults to `GLOBAL_SETTINGS.kernel_config`.
 
     Returns:
         Field: The sampled electric and magnetic fields.
@@ -783,17 +798,15 @@ def sc_expose_thetaphi(source: Surface, theta: np.ndarray, phi: np.ndarray, side
         wns[:,i2] += n*areas[i]/3
         wns[:,i3] += n*areas[i]/3
     
-    Eout = None
-    Hout = None
     tpout = np.array([theta, phi])
-    with ProgressBar(total=Ntot, ncols=100, dynamic_ncols=False) as pgb:
-        Eout, Hout = stratton_chu_ff(
-            Ein.astype(np.complex128),
-            Hin.astype(np.complex128),
-            vis.astype(np.float64),
-            wns.astype(np.float64),
-            tpout.astype(np.float64),
-            np.float64(source.k0),
-            pgb,
-        )
-    return EHFieldFF(_E=Eout, _H=Hout, theta=theta, phi=phi, Ptot=0)
+    cfg = kernel_config if kernel_config is not None else GLOBAL_SETTINGS.kernel_config
+    Eout, Hout = optycal_kernels.stratton_chu_ff(
+        Ein.astype(np.complex128),
+        Hin.astype(np.complex128),
+        vis.astype(np.float64),
+        wns.astype(np.float64),
+        tpout.astype(np.float64),
+        np.float64(source.k0),
+        cfg,
+    )
+    return EHFieldFF(_E=np.asarray(Eout), _H=np.asarray(Hout), theta=theta, phi=phi, Ptot=0)

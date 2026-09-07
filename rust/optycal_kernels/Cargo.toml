@@ -1,0 +1,21 @@
+[package]
+name = "optycal_kernels"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "optycal_kernels"
+crate-type = ["cdylib"]
+
+[dependencies]
+num-complex = "0.4.6"
+numpy = "0.29.0"
+pyo3 = { version = "0.29.0", features = ["extension-module"] }
+rayon = "1.12.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
